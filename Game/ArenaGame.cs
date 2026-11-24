@@ -141,8 +141,9 @@ namespace LumiaRoyale.Game
             _timeLeft -= dt;
             if (_timeLeft <= 0f) { _timeLeft = 0f; EndByCrowns(); base.Update(gameTime); return; }
 
-            _mana = Math.Min(ManaMax, _mana + dt * 0.55f);
-            _enemyMana = Math.Min(ManaMax, _enemyMana + dt * 0.55f);
+            float manaRate = _timeLeft <= 60f ? 0.85f : 0.55f;
+            _mana = Math.Min(ManaMax, _mana + dt * manaRate);
+            _enemyMana = Math.Min(ManaMax, _enemyMana + dt * manaRate);
 
             UpdateEnemy(dt);
             UpdateUnits(dt);
@@ -531,10 +532,67 @@ namespace LumiaRoyale.Game
                         dir.Normalize();
                         u.Pos += dir * u.Def.Speed * dt;
                         u.WalkPhase += dt * (8f + u.Def.Speed * 0.08f);
-                        ClampToArena(u);
                     }
                 }
             }
+
+            ResolveUnitSeparation();
+            foreach (var u in _units) if (u.Alive && !u.IsBuilding) ClampToArena(u);
+        }
+
+        private void ResolveUnitSeparation()
+        {
+            // simple separation pass to avoid stacking
+            for (int i = 0; i < _units.Count; i++)
+            {
+                var a = _units[i];
+                if (!a.Alive || a.IsBuilding) continue;
+                for (int j = i + 1; j < _units.Count; j++)
+                {
+                    var b = _units[j];
+                    if (!b.Alive || b.IsBuilding) continue;
+
+                    Vector2 delta = b.Pos - a.Pos;
+                    float distSq = delta.LengthSquared();
+                    float minDist = a.Radius + b.Radius + 2f;
+                    if (distSq > minDist * minDist) continue;
+
+                    float dist = (float)Math.Sqrt(distSq);
+                    Vector2 push;
+                    if (dist < 0.001f)
+                    {
+                        // deterministic-ish nudge based on index
+                        float ang = (i * 0.7f + j * 1.3f);
+                        push = new Vector2((float)Math.Cos(ang), (float)Math.Sin(ang)) * 0.5f;
+                    }
+                    else
+                    {
+                        push = (delta / dist) * ((minDist - dist) * 0.5f);
+                    }
+
+                    bool aMove = CanPush(a);
+                    bool bMove = CanPush(b);
+                    if (aMove && bMove)
+                    {
+                        a.Pos -= push;
+                        b.Pos += push;
+                    }
+                    else if (aMove)
+                    {
+                        a.Pos -= push * 2f;
+                    }
+                    else if (bMove)
+                    {
+                        b.Pos += push * 2f;
+                    }
+                }
+            }
+        }
+
+        private bool CanPush(Unit u)
+        {
+            // avoid pushing units out of valid river crossings too aggressively
+            return !u.IsBuilding;
         }
 
         private void SpawnProjectile(Unit u, TargetInfo target)

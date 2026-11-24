@@ -15,6 +15,7 @@ namespace LumiaRoyale.Game
         private readonly GraphicsDeviceManager _graphics;
         private SpriteBatch _spriteBatch;
         private Texture2D _pixel;
+        private Texture2D _archerBackTex;
 
         private readonly List<Unit> _units = new List<Unit>();
         private readonly List<Tower> _towers = new List<Tower>();
@@ -87,6 +88,22 @@ namespace LumiaRoyale.Game
             _spriteBatch = new SpriteBatch(GraphicsDevice);
             _pixel = new Texture2D(GraphicsDevice, 1, 1);
             _pixel.SetData(new[] { Color.White });
+            try
+            {
+                var installed = Windows.ApplicationModel.Package.Current.InstalledLocation.Path;
+                var path = System.IO.Path.Combine(installed, "Assets", "Sprites", "arqueira_back.png");
+                using (var s = System.IO.File.OpenRead(path))
+                    _archerBackTex = Texture2D.FromStream(GraphicsDevice, s);
+            }
+            catch
+            {
+                try
+                {
+                    using (var s = TitleContainer.OpenStream("Assets/Sprites/arqueira_back.png"))
+                        _archerBackTex = Texture2D.FromStream(GraphicsDevice, s);
+                }
+                catch { _archerBackTex = null; }
+            }
         }
 
         private void ResetMatch()
@@ -1158,6 +1175,7 @@ namespace LumiaRoyale.Game
                 if (u.Def.Id == "pulso") DrawColossus(u, team, dark);
                 else if (u.Def.Id == "enxame") DrawSwarm(u, team, dark);
                 else if (u.Def.Id == "eco") DrawEco(u, team, dark);
+                else if (u.Def.Kind == CardKind.Ranged && u.Def.Id == "dardo") DrawArcher(u, team, dark);
                 else if (u.Def.Kind == CardKind.Ranged) DrawRanged(u, team, dark);
                 else DrawMelee(u, team, dark);
 
@@ -1267,6 +1285,23 @@ namespace LumiaRoyale.Game
             DrawRect(new Rectangle(x + dir * 6, y - 2, 8, 4), new Color(60, 60, 70));
             if (u.AttackAnim > 0) DrawRect(new Rectangle(x + dir * 14, y - 3, 4, 6), new Color(255, 255, 200));
             if (u.HitFlash > 0) DrawRect(body, new Color(255, 255, 255, 110));
+        }
+
+        private void DrawArcher(Unit u, Color team, Color dark)
+        {
+            if (_archerBackTex != null)
+            {
+                float bob = (float)Math.Sin(u.WalkPhase) * 1.2f;
+                int size = 28;
+                var dst = new Rectangle((int)(u.Pos.X - size / 2f), (int)(u.Pos.Y - size / 2f + bob), size, size);
+                DrawRect(new Rectangle(dst.X + 4, dst.Bottom - 3, dst.Width - 8, 3), new Color(0, 0, 0, 45));
+                Color tint = Color.Lerp(Color.White, team, 0.15f);
+                if (u.HitFlash > 0) tint = Color.Lerp(tint, Color.White, 0.7f);
+                _spriteBatch.Draw(_archerBackTex, dst, tint);
+                return;
+            }
+
+            DrawRanged(u, team, dark);
         }
 
         private void DrawColossus(Unit u, Color team, Color dark)

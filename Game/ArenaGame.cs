@@ -358,28 +358,9 @@ namespace LumiaRoyale.Game
             bool onOwnSide = enemy ? pos.Y <= midY : pos.Y >= midY;
             if (onOwnSide) return true;
 
-            // After destroying an enemy side tower, allow deploying in that lane's pocket on opponent side
-            float leftX = _arenaRect.Left + _arenaRect.Width * 0.25f;
-            float rightX = _arenaRect.Left + _arenaRect.Width * 0.75f;
-            float laneX = Math.Abs(pos.X - leftX) <= Math.Abs(pos.X - rightX) ? leftX : rightX;
-            var sideTower = _towers.FirstOrDefault(t => t.IsEnemy != enemy && !t.IsMain && Math.Abs(t.Pos.X - laneX) < 20f);
-            if (sideTower != null && sideTower.Alive) return false;
-
-            float pocketHalfW = _arenaRect.Width * 0.22f;
-            if (Math.Abs(pos.X - laneX) > pocketHalfW) return false;
-
-            if (enemy)
-            {
-                // enemy deploying into player's pocket (player side tower destroyed)
-                float minY = _arenaRect.Bottom - _arenaRect.Height * 0.35f;
-                return pos.Y >= minY;
-            }
-            else
-            {
-                // player deploying into enemy pocket
-                float maxY = _arenaRect.Top + _arenaRect.Height * 0.35f;
-                return pos.Y <= maxY;
-            }
+            // Pocket: começa na ponte e vai até pouco antes da torre lateral destruída.
+            // Com as duas laterais caídas, vira um retângulo até perto da torre do rei.
+            return GetDeployPockets(enemy).Any(p => p.Contains((int)pos.X, (int)pos.Y));
         }
 
         private void PlayCard(CardDef card, Vector2 pos, bool enemy)
@@ -552,14 +533,14 @@ namespace LumiaRoyale.Game
                 laneX = rh < lh ? rightX : leftX;
             }
 
-            // If player side tower in chosen lane is down, sometimes deploy in pocket to pressure
-            var oppSide = _towers.FirstOrDefault(t => !t.IsEnemy && !t.IsMain && Math.Abs(t.Pos.X - laneX) < 20f);
-            bool pocketAvailable = oppSide != null && !oppSide.Alive;
-            bool canPocket = pocketAvailable && card.Kind != CardKind.Building && _enemyMana >= 5f;
+            // Se alguma lateral do jogador caiu, às vezes ataca pelo bolso (da ponte até a torre).
+            var pockets = GetDeployPockets(true);
+            bool canPocket = pockets.Count > 0 && card.Kind != CardKind.Building && _enemyMana >= 5f;
             if (canPocket && _rng.NextDouble() < 0.45)
             {
-                float px = laneX + ((float)_rng.NextDouble() - 0.5f) * (_arenaRect.Width * 0.2f);
-                float py = _arenaRect.Bottom - _arenaRect.Height * 0.28f + (float)_rng.NextDouble() * (_arenaRect.Height * 0.12f);
+                var p = pockets[_rng.Next(pockets.Count)];
+                float px = p.X + p.Width * (0.2f + (float)_rng.NextDouble() * 0.6f);
+                float py = p.Y + p.Height * (0.2f + (float)_rng.NextDouble() * 0.6f);
                 return new Vector2(px, py);
             }
 
@@ -893,11 +874,18 @@ namespace LumiaRoyale.Game
             public Action<int> applyDamage;
         }
 
+        private Tower GetSideTowerInLane(bool isEnemy, float laneX)
+        {
+            return _towers.FirstOrDefault(t => t.IsEnemy == isEnemy && !t.IsMain && Math.Abs(t.Pos.X - laneX) < 20f);
+        }
+
         private TargetInfo? FindTarget(Unit u)
         {
             TargetInfo? best = null;
             float bestScore = float.MaxValue;
             bool buildingOnly = u.Def.Id == "pulso"; // Colosso targets only buildings/towers
+            var laneTower = GetSideTowerInLane(!u.IsEnemy, u.LaneX);
+            bool laneOpen = laneTower == null || !laneTower.Alive;
 
             if (!buildingOnly)
             {
@@ -929,6 +917,7 @@ namespace LumiaRoyale.Game
                 float d = Vector2.Distance(u.Pos, other.Pos);
                 float laneDist = Math.Abs(other.Pos.X - u.LaneX);
                 float score = d + laneDist * 0.2f - 30f;
+                if (laneOpen && laneDist > 40f) score += 400f; // segue pelo lane aberto até o rei
                 if (score < bestStructureScore)
                 {
                     bestStructureScore = score;
@@ -943,7 +932,11 @@ namespace LumiaRoyale.Game
                 float laneDist = Math.Abs(t.Pos.X - u.LaneX);
                 float d = Vector2.Distance(u.Pos, t.Pos);
                 float score = d + laneDist * 0.35f;
-                if (!t.IsMain) score -= 60f; // side towers first
+                if (!t.IsMain)
+                {
+                    score -= 60f; // side towers first
+                    if (laneOpen && laneDist > 40f) score += 400f; // não troca de lane depois de abrir o caminho
+                }
                 if (score < bestStructureScore)
                 {
                     bestStructureScore = score;
@@ -978,10 +971,13 @@ namespace LumiaRoyale.Game
             }
             else if (target.isTower && target.isMain)
             {
-                bool leftAlive = _towers.Any(t => t.Alive && t.IsEnemy == target.isEnemy && !t.IsMain && Math.Abs(t.Pos.X - left) < 10f);
-                bool rightAlive = _towers.Any(t => t.Alive && t.IsEnemy == target.isEnemy && !t.IsMain && Math.Abs(t.Pos.X - right) < 10f);
-                if (leftAlive && !rightAlive) crossLane = left;
-                else if (rightAlive && !leftAlive) crossLane = right;
+                var leftTower = GetSideTowerInLane(target.isEnemy, left);
+                var rightTower = GetSideTowerInLane(target.isEnemy, right);
+                bool leftOpen = leftTower == null || !leftTower.Alive;
+                bool rightOpen = rightTower == null || !rightTower.Alive;
+                if (leftOpen && !rightOpen) crossLane = left;      // abre pelo lane da torre caída
+                else if (rightOpen && !leftOpen) crossLane = right;
+                else if (leftOpen && rightOpen) crossLane = Math.Abs(u.LaneX - left) <= Math.Abs(u.LaneX - right) ? left : right;
                 else crossLane = Math.Abs(u.Pos.X - left) <= Math.Abs(u.Pos.X - right) ? left : right;
             }
 
@@ -1146,27 +1142,35 @@ namespace LumiaRoyale.Game
         private List<Rectangle> GetDeployPockets(bool enemyPlayer)
         {
             var pockets = new List<Rectangle>();
-            float leftX = _arenaRect.Left + _arenaRect.Width * 0.25f;
-            float rightX = _arenaRect.Left + _arenaRect.Width * 0.75f;
-            float pocketHalfW = _arenaRect.Width * 0.22f;
-            int pocketH = (int)(_arenaRect.Height * 0.35f);
+            bool targetIsEnemy = !enemyPlayer;
+            var sideTowers = _towers.Where(t => t.IsEnemy == targetIsEnemy && !t.IsMain).ToList();
+            if (sideTowers.Count == 0) return pockets;
 
-            foreach (float laneX in new[] { leftX, rightX })
+            // Borda da ponte (rio) que separa os lados.
+            float bridgeEdgeY = enemyPlayer ? _arenaRect.Center.Y + 14f : _arenaRect.Center.Y - 14f;
+
+            // Com as duas torres laterais caídas: retângulo largo, da ponte até perto do rei.
+            if (sideTowers.All(t => !t.Alive))
             {
-                var sideTower = _towers.FirstOrDefault(t => t.IsEnemy != enemyPlayer && !t.IsMain && Math.Abs(t.Pos.X - laneX) < 20f);
-                if (sideTower == null || sideTower.Alive) continue;
-                int x = (int)(laneX - pocketHalfW);
-                int w = (int)(pocketHalfW * 2);
-                if (enemyPlayer)
-                {
-                    int y = _arenaRect.Bottom - pocketH;
-                    pockets.Add(new Rectangle(x, y, w, pocketH));
-                }
-                else
-                {
-                    int y = _arenaRect.Top;
-                    pockets.Add(new Rectangle(x, y, w, pocketH));
-                }
+                var king = _towers.FirstOrDefault(t => t.IsEnemy == targetIsEnemy && t.IsMain);
+                if (king == null) return pockets;
+                float kingEdgeY = enemyPlayer ? king.Pos.Y - 60f : king.Pos.Y + 60f;
+                int y = (int)Math.Min(bridgeEdgeY, kingEdgeY);
+                int h = (int)Math.Max(8f, Math.Abs(kingEdgeY - bridgeEdgeY));
+                pockets.Add(new Rectangle(_arenaRect.X, y, _arenaRect.Width, h));
+                return pockets;
+            }
+
+            // Uma lateral caída: área começa na ponte e para um pouco antes da torre, sem cobrir ela.
+            float pocketHalfW = _arenaRect.Width * 0.22f;
+            foreach (var tower in sideTowers.Where(t => !t.Alive))
+            {
+                float towerEdgeY = enemyPlayer ? tower.Pos.Y - 40f : tower.Pos.Y + 40f;
+                int y = (int)Math.Min(bridgeEdgeY, towerEdgeY);
+                int h = (int)Math.Max(8f, Math.Abs(towerEdgeY - bridgeEdgeY));
+                int x = (int)Math.Max(_arenaRect.X, tower.Pos.X - pocketHalfW);
+                int right = (int)Math.Min(_arenaRect.Right, tower.Pos.X + pocketHalfW);
+                pockets.Add(new Rectangle(x, y, Math.Max(8, right - x), h));
             }
             return pockets;
         }

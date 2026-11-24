@@ -29,12 +29,12 @@ namespace LumiaRoyale.Game
         {
             return new[]
             {
-                new CardDef { Id="sentinela", Name="Sentinela", Cost=3, Hp=260, Damage=30, Speed=30f, Range=22f, AttackCooldown=1.0f, Color=new Color(90, 170, 255), Kind=CardKind.Melee },
-                new CardDef { Id="dardo", Name="Dardo", Cost=2, Hp=120, Damage=24, Speed=40f, Range=95f, AttackCooldown=0.8f, Color=new Color(255, 190, 80), Kind=CardKind.Ranged },
-                new CardDef { Id="pulso", Name="Pulso", Cost=4, Hp=360, Damage=42, Speed=24f, Range=24f, AttackCooldown=1.2f, Color=new Color(170, 120, 255), Kind=CardKind.Melee },
-                new CardDef { Id="faisca", Name="Faísca", Cost=2, Hp=100, Damage=18, Speed=46f, Range=85f, AttackCooldown=0.7f, Color=new Color(120, 255, 180), Kind=CardKind.Ranged },
-                new CardDef { Id="nova", Name="Nova", Cost=4, Hp=0, Damage=130, Speed=0f, Range=0f, AttackCooldown=0f, AreaRadius=56f, Color=new Color(255, 130, 70), Kind=CardKind.Spell },
-                new CardDef { Id="torreta", Name="Torreta", Cost=3, Hp=340, Damage=26, Speed=0f, Range=115f, AttackCooldown=0.9f, Lifetime=22f, Color=new Color(180, 200, 220), Kind=CardKind.Building }
+                new CardDef { Id="sentinela", Name="Sentinela", Cost=3, Hp=280, Damage=34, Speed=32f, Range=24f, AttackCooldown=1.0f, Color=new Color(90, 170, 255), Kind=CardKind.Melee },
+                new CardDef { Id="dardo", Name="Vigia",     Cost=2, Hp=130, Damage=26, Speed=38f, Range=105f, AttackCooldown=0.9f, Color=new Color(255, 190, 80), Kind=CardKind.Ranged },
+                new CardDef { Id="pulso", Name="Colosso",   Cost=5, Hp=720, Damage=58, Speed=18f, Range=26f, AttackCooldown=1.35f, Color=new Color(170, 120, 255), Kind=CardKind.Melee },
+                new CardDef { Id="faisca", Name="Faisca",   Cost=2, Hp=110, Damage=20, Speed=48f, Range=90f, AttackCooldown=0.65f, Color=new Color(120, 255, 180), Kind=CardKind.Ranged },
+                new CardDef { Id="nova", Name="Nova",       Cost=4, Hp=0,   Damage=140, Speed=0f,  Range=0f, AttackCooldown=0f, AreaRadius=58f, Color=new Color(255, 130, 70), Kind=CardKind.Spell },
+                new CardDef { Id="torreta", Name="Torreta", Cost=3, Hp=360, Damage=28, Speed=0f, Range=120f, AttackCooldown=0.85f, Lifetime=24f, Color=new Color(180, 200, 220), Kind=CardKind.Building }
             };
         }
     }

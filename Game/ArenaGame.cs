@@ -19,6 +19,7 @@ namespace LumiaRoyale.Game
         private readonly List<Unit> _units = new List<Unit>();
         private readonly List<Tower> _towers = new List<Tower>();
         private readonly List<Fx> _fx = new List<Fx>();
+        private readonly List<Projectile> _projectiles = new List<Projectile>();
         private readonly Random _rng = new Random();
 
         private CardDef[] _deck;
@@ -89,6 +90,7 @@ namespace LumiaRoyale.Game
             _units.Clear();
             _towers.Clear();
             _fx.Clear();
+            _projectiles.Clear();
             _deck = CardDef.StarterDeck().OrderBy(_ => _rng.Next()).ToArray();
             _hand = new CardDef[4];
             for (int i = 0; i < 4; i++) _hand[i] = _deck[i % _deck.Length];
@@ -145,6 +147,7 @@ namespace LumiaRoyale.Game
             UpdateEnemy(dt);
             UpdateUnits(dt);
             UpdateTowers(dt);
+            UpdateProjectiles(dt);
 
             for (int i = _units.Count - 1; i >= 0; i--)
             {
@@ -181,7 +184,11 @@ namespace LumiaRoyale.Game
                 _fx[i] = f;
                 if (f.Life <= 0) _fx.RemoveAt(i);
             }
-            foreach (var u in _units) if (u.HitFlash > 0) u.HitFlash -= dt;
+            foreach (var u in _units)
+            {
+                if (u.HitFlash > 0) u.HitFlash -= dt;
+                if (u.AttackAnim > 0) u.AttackAnim -= dt;
+            }
             foreach (var t in _towers) if (t.HitFlash > 0) t.HitFlash -= dt;
         }
 
@@ -494,13 +501,24 @@ namespace LumiaRoyale.Game
                 var target = FindTarget(u);
                 if (target == null) continue;
 
+                var toTarget = target.Value.pos - u.Pos;
+                if (toTarget.LengthSquared() > 1f) u.Facing = Vector2.Normalize(toTarget);
+
                 float dist = Vector2.Distance(u.Pos, target.Value.pos);
                 if (dist <= u.Def.Range + target.Value.radius)
                 {
                     if (u.AttackTimer <= 0f)
                     {
-                        target.Value.applyDamage(u.Def.Damage);
-                        AddFx(Vector2.Lerp(u.Pos, target.Value.pos, 0.6f), u.Def.Color, 8f, 0.16f, "hit");
+                        u.AttackAnim = 0.14f;
+                        if (u.Def.Kind == CardKind.Ranged)
+                        {
+                            SpawnProjectile(u, target.Value);
+                        }
+                        else
+                        {
+                            target.Value.applyDamage(u.Def.Damage);
+                            AddFx(Vector2.Lerp(u.Pos, target.Value.pos, 0.6f), u.Def.Color, 8f, 0.16f, "hit");
+                        }
                         u.AttackTimer = u.Def.AttackCooldown;
                     }
                 }
@@ -512,9 +530,97 @@ namespace LumiaRoyale.Game
                     {
                         dir.Normalize();
                         u.Pos += dir * u.Def.Speed * dt;
+                        u.WalkPhase += dt * (8f + u.Def.Speed * 0.08f);
                         ClampToArena(u);
                     }
                 }
+            }
+        }
+
+        private void SpawnProjectile(Unit u, TargetInfo target)
+        {
+            Vector2 dir = target.pos - u.Pos;
+            if (dir.LengthSquared() < 1f) dir = u.Facing;
+            dir.Normalize();
+            float speed = 260f;
+            var p = new Projectile
+            {
+                Pos = u.Pos + dir * (u.Radius + 4f),
+                Vel = dir * speed,
+                Damage = u.Def.Damage,
+                ByPlayer = !u.IsEnemy,
+                Color = u.Def.Color,
+                Radius = 4f,
+                Life = 2.5f,
+                UnitTarget = target.unit,
+                TowerTarget = target.tower
+            };
+            _projectiles.Add(p);
+        }
+
+        private void UpdateProjectiles(float dt)
+        {
+            for (int i = _projectiles.Count - 1; i >= 0; i--)
+            {
+                var p = _projectiles[i];
+                if (!p.Alive) { _projectiles.RemoveAt(i); continue; }
+                p.Life -= dt;
+                if (p.Life <= 0) { _projectiles.RemoveAt(i); continue; }
+
+                // slight homing for better feel
+                Vector2 targetPos = Vector2.Zero;
+                bool hasTarget = false;
+                if (p.UnitTarget != null && p.UnitTarget.Alive) { targetPos = p.UnitTarget.Pos; hasTarget = true; }
+                else if (p.TowerTarget != null && p.TowerTarget.Alive) { targetPos = p.TowerTarget.Pos; hasTarget = true; }
+
+                if (hasTarget)
+                {
+                    Vector2 desired = targetPos - p.Pos;
+                    if (desired.LengthSquared() > 1f)
+                    {
+                        desired.Normalize();
+                        float speed = p.Vel.Length();
+                        var cur = Vector2.Normalize(p.Vel);
+                        var blended = Vector2.Normalize(cur * 0.82f + desired * 0.18f);
+                        p.Vel = blended * speed;
+                    }
+                }
+
+                p.Pos += p.Vel * dt;
+
+                bool hit = false;
+                // hit unit
+                foreach (var u in _units)
+                {
+                    if (!u.Alive) continue;
+                    if (u.IsEnemy == !p.ByPlayer) continue;
+                    if (Vector2.DistanceSquared(p.Pos, u.Pos) <= (u.Radius + p.Radius) * (u.Radius + p.Radius))
+                    {
+                        u.Hp -= p.Damage;
+                        u.HitFlash = 0.12f;
+                        AddFx(p.Pos, p.Color, 8f, 0.14f, "hit");
+                        hit = true;
+                        break;
+                    }
+                }
+                if (!hit)
+                {
+                    foreach (var t in _towers)
+                    {
+                        if (!t.Alive) continue;
+                        if (t.IsEnemy == !p.ByPlayer) continue;
+                        if (Vector2.DistanceSquared(p.Pos, t.Pos) <= (24f + p.Radius) * (24f + p.Radius))
+                        {
+                            DamageTower(t, p.Damage, p.ByPlayer);
+                            AddFx(p.Pos, p.Color, 8f, 0.14f, "hit");
+                            hit = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (hit || !_arenaRect.Contains((int)p.Pos.X, (int)p.Pos.Y))
+                    _projectiles.RemoveAt(i);
             }
         }
 
@@ -549,6 +655,8 @@ namespace LumiaRoyale.Game
             public bool isTower;
             public bool isMain;
             public bool isEnemy;
+            public Unit unit;
+            public Tower tower;
             public Action<int> applyDamage;
         }
 
@@ -567,7 +675,7 @@ namespace LumiaRoyale.Game
                 {
                     bestScore = score;
                     var o = other;
-                    best = new TargetInfo { pos = o.Pos, radius = o.Radius, isTower = false, isMain = false, isEnemy = o.IsEnemy, applyDamage = dmg => { o.Hp -= dmg; o.HitFlash = 0.12f; } };
+                    best = new TargetInfo { pos = o.Pos, radius = o.Radius, isTower = false, isMain = false, isEnemy = o.IsEnemy, unit = o, tower = null, applyDamage = dmg => { o.Hp -= dmg; o.HitFlash = 0.12f; } };
                 }
             }
 
@@ -587,7 +695,7 @@ namespace LumiaRoyale.Game
                 {
                     bestTowerScore = score;
                     var tw = t;
-                    bestTower = new TargetInfo { pos = tw.Pos, radius = 24f, isTower = true, isMain = tw.IsMain, isEnemy = tw.IsEnemy, applyDamage = dmg => { DamageTower(tw, dmg, !u.IsEnemy); } };
+                    bestTower = new TargetInfo { pos = tw.Pos, radius = 24f, isTower = true, isMain = tw.IsMain, isEnemy = tw.IsEnemy, unit = null, tower = tw, applyDamage = dmg => { DamageTower(tw, dmg, !u.IsEnemy); } };
                 }
             }
 
@@ -596,57 +704,61 @@ namespace LumiaRoyale.Game
 
         private Vector2 GetMoveTarget(Unit u, TargetInfo target)
         {
-            if (!target.isTower)
-                return target.pos;
-
-            float laneX = u.LaneX;
             float bridgeY = _arenaRect.Center.Y;
             float riverTop = bridgeY - 14f;
             float riverBottom = bridgeY + 14f;
-            float approachY = u.IsEnemy ? riverTop - 18f : riverBottom + 18f;
-            float exitY = u.IsEnemy ? riverBottom + 18f : riverTop - 18f;
-
             bool onMySide = u.IsEnemy ? u.Pos.Y < riverTop : u.Pos.Y > riverBottom;
             bool onEnemySide = u.IsEnemy ? u.Pos.Y > riverBottom : u.Pos.Y < riverTop;
+            bool targetOnOtherSide = u.IsEnemy ? target.pos.Y > riverBottom : target.pos.Y < riverTop;
 
-            // Side towers: march up lane, cross bridge, then go to tower.
+            float left = _arenaRect.Left + _arenaRect.Width * 0.25f;
+            float right = _arenaRect.Left + _arenaRect.Width * 0.75f;
+            float laneX = u.LaneX;
+
+            // Pick bridge lane for crossing
+            float crossLane = Math.Abs(u.Pos.X - left) <= Math.Abs(u.Pos.X - right) ? left : right;
+            if (target.isTower && !target.isMain)
+            {
+                crossLane = laneX; // side tower: own lane
+            }
+            else if (target.isTower && target.isMain)
+            {
+                bool leftAlive = _towers.Any(t => t.Alive && t.IsEnemy == target.isEnemy && !t.IsMain && Math.Abs(t.Pos.X - left) < 10f);
+                bool rightAlive = _towers.Any(t => t.Alive && t.IsEnemy == target.isEnemy && !t.IsMain && Math.Abs(t.Pos.X - right) < 10f);
+                if (leftAlive && !rightAlive) crossLane = left;
+                else if (rightAlive && !leftAlive) crossLane = right;
+                else crossLane = Math.Abs(u.Pos.X - left) <= Math.Abs(u.Pos.X - right) ? left : right;
+            }
+
+            float exitY = u.IsEnemy ? riverBottom + 18f : riverTop - 18f;
+
+            // Cross river when target is on other side
+            if (onMySide && targetOnOtherSide)
+            {
+                if (Math.Abs(u.Pos.X - crossLane) > 12f)
+                    return new Vector2(crossLane, u.Pos.Y);
+                return new Vector2(crossLane, exitY);
+            }
+
+            // Currently in river: keep crossing to exit
+            if (!onMySide && !onEnemySide)
+            {
+                // snap to nearest bridge while in river
+                crossLane = Math.Abs(u.Pos.X - left) <= Math.Abs(u.Pos.X - right) ? left : right;
+                return new Vector2(crossLane, exitY);
+            }
+
+            // Same side as target
+            if (!target.isTower) return target.pos;
+
             if (!target.isMain)
             {
-                if (onMySide)
-                {
-                    if (Math.Abs(u.Pos.X - laneX) > 10f) return new Vector2(laneX, u.Pos.Y);
-                    return new Vector2(laneX, approachY);
-                }
-                if (!onEnemySide)
-                {
-                    // crossing river
-                    return new Vector2(laneX, exitY);
-                }
-                // on enemy side: go toward tower while keeping lane until close
+                // On enemy side: keep lane until close to side tower
                 if (Math.Abs(target.pos.X - laneX) < 40f || Math.Abs(u.Pos.Y - target.pos.Y) > 70f)
                     return new Vector2(laneX, target.pos.Y);
                 return target.pos;
             }
 
-            // King: go through nearest available lane bridge, then to king.
-            float left = _arenaRect.Left + _arenaRect.Width * 0.25f;
-            float right = _arenaRect.Left + _arenaRect.Width * 0.75f;
-            bool leftAlive = _towers.Any(t => t.Alive && t.IsEnemy == target.isEnemy && !t.IsMain && Math.Abs(t.Pos.X - left) < 10f);
-            bool rightAlive = _towers.Any(t => t.Alive && t.IsEnemy == target.isEnemy && !t.IsMain && Math.Abs(t.Pos.X - right) < 10f);
-            float kingLane = laneX;
-            if (leftAlive || rightAlive)
-            {
-                if (leftAlive && !rightAlive) kingLane = left;
-                else if (rightAlive && !leftAlive) kingLane = right;
-                else kingLane = Math.Abs(u.Pos.X - left) <= Math.Abs(u.Pos.X - right) ? left : right;
-            }
-
-            if (onMySide)
-            {
-                if (Math.Abs(u.Pos.X - kingLane) > 10f) return new Vector2(kingLane, u.Pos.Y);
-                return new Vector2(kingLane, approachY);
-            }
-            if (!onEnemySide) return new Vector2(kingLane, exitY);
             return target.pos;
         }
 
@@ -789,35 +901,113 @@ namespace LumiaRoyale.Game
                 if (!u.Alive) continue;
                 Color team = u.IsEnemy ? new Color(210, 70, 70) : new Color(80, 150, 235);
                 Color dark = u.IsEnemy ? new Color(120, 30, 30) : new Color(35, 75, 130);
+
                 if (u.IsBuilding)
                 {
-                    var b = new Rectangle((int)u.Pos.X - 14, (int)u.Pos.Y - 14, 28, 28);
-                    DrawRect(new Rectangle(b.X + 3, b.Bottom - 1, b.Width, 4), new Color(0, 0, 0, 50));
-                    DrawRect(b, new Color(140, 145, 155));
-                    DrawRect(b, dark, 2);
-                    DrawRect(new Rectangle(b.X + 5, b.Y + 5, b.Width - 10, 8), u.Def.Color);
-                    DrawRect(new Rectangle(b.Center.X - 3, b.Y - 6, 6, 8), team);
-                    if (u.HitFlash > 0) DrawRect(b, new Color(255, 255, 255, 110));
-                    DrawHpBar(b.X - 2, b.Y - 11, b.Width + 4, 4, u.Hp, u.MaxHp);
-                    // lifetime
-                    float lt = u.Def.Lifetime > 0 ? MathHelper.Clamp(u.LifeLeft / u.Def.Lifetime, 0, 1) : 0;
-                    DrawRect(new Rectangle(b.X - 2, b.Bottom + 5, b.Width + 4, 3), new Color(20, 20, 20, 160));
-                    DrawRect(new Rectangle(b.X - 2, b.Bottom + 5, (int)((b.Width + 4) * lt), 3), new Color(200, 200, 255));
+                    DrawBuildingUnit(u, team, dark);
                     continue;
                 }
 
-                int s = u.Def.Kind == CardKind.Melee ? 22 : 18;
-                var body = new Rectangle((int)u.Pos.X - s / 2, (int)u.Pos.Y - s / 2, s, s);
-                DrawRect(new Rectangle(body.X + 2, body.Bottom - 2, body.Width - 2, 4), new Color(0, 0, 0, 55));
-                DrawRect(body, u.Def.Color);
-                DrawRect(body, dark, 2);
-                DrawRect(new Rectangle(body.X + 3, body.Y + 3, body.Width - 6, 5), new Color(255, 255, 255, 55));
-                DrawRect(new Rectangle(body.Center.X - 4, body.Y - 5, 8, 4), team);
-                if (u.Def.Kind == CardKind.Ranged)
-                    DrawRect(new Rectangle(body.Center.X - 2, body.Center.Y - 2, 4, 4), Color.White);
-                if (u.HitFlash > 0) DrawRect(body, new Color(255, 255, 255, 110));
-                DrawHpBar(body.X - 2, body.Y - 9, body.Width + 4, 4, u.Hp, u.MaxHp);
+                if (u.Def.Id == "pulso") DrawColossus(u, team, dark);
+                else if (u.Def.Kind == CardKind.Ranged) DrawRanged(u, team, dark);
+                else DrawMelee(u, team, dark);
+
+                int hpW = u.Def.Id == "pulso" ? 30 : 22;
+                DrawHpBar((int)u.Pos.X - hpW / 2, (int)u.Pos.Y - (u.Def.Id == "pulso" ? 28 : 16), hpW, 4, u.Hp, u.MaxHp);
             }
+        }
+
+        private void DrawBuildingUnit(Unit u, Color team, Color dark)
+        {
+            var b = new Rectangle((int)u.Pos.X - 14, (int)u.Pos.Y - 14, 28, 28);
+            DrawRect(new Rectangle(b.X + 3, b.Bottom - 1, b.Width, 4), new Color(0, 0, 0, 50));
+            DrawRect(b, new Color(140, 145, 155));
+            DrawRect(b, dark, 2);
+            DrawRect(new Rectangle(b.X + 4, b.Y + 4, b.Width - 8, 10), Color.Lerp(u.Def.Color, Color.Black, 0.2f));
+            DrawRect(new Rectangle(b.Center.X - 3, b.Y - 6, 6, 8), team);
+            if (u.AttackAnim > 0) DrawRect(new Rectangle(b.Center.X - 2, b.Y - 10, 4, 4), Color.White);
+            if (u.HitFlash > 0) DrawRect(b, new Color(255, 255, 255, 110));
+            DrawHpBar(b.X - 2, b.Y - 11, b.Width + 4, 4, u.Hp, u.MaxHp);
+            float lt = u.Def.Lifetime > 0 ? MathHelper.Clamp(u.LifeLeft / u.Def.Lifetime, 0, 1) : 0;
+            DrawRect(new Rectangle(b.X - 2, b.Bottom + 5, b.Width + 4, 3), new Color(20, 20, 20, 160));
+            DrawRect(new Rectangle(b.X - 2, b.Bottom + 5, (int)((b.Width + 4) * lt), 3), new Color(200, 200, 255));
+        }
+
+        private void DrawMelee(Unit u, Color team, Color dark)
+        {
+            float bob = (float)Math.Sin(u.WalkPhase * 2f) * 1.5f;
+            int x = (int)u.Pos.X;
+            int y = (int)(u.Pos.Y + bob);
+            int s = 20;
+            var body = new Rectangle(x - s / 2, y - s / 2, s, s);
+            DrawRect(new Rectangle(body.X + 2, body.Bottom, body.Width - 2, 4), new Color(0, 0, 0, 55));
+            DrawRect(body, u.Def.Color);
+            DrawRect(body, dark, 2);
+            DrawRect(new Rectangle(body.X + 3, body.Y + 3, body.Width - 6, 5), new Color(255, 255, 255, 45));
+            // head
+            DrawRect(new Rectangle(x - 5, body.Y - 6, 10, 7), Color.Lerp(u.Def.Color, Color.White, 0.15f));
+            DrawRect(new Rectangle(x - 5, body.Y - 6, 10, 7), dark, 1);
+            // team band
+            DrawRect(new Rectangle(x - 6, body.Y + 2, 12, 3), team);
+            // weapon
+            int dir = u.Facing.X >= 0 ? 1 : -1;
+            int swing = u.AttackAnim > 0 ? 3 : 0;
+            DrawRect(new Rectangle(x + dir * 8, y - 8 - swing, 3, 14), new Color(230, 230, 240));
+            DrawRect(new Rectangle(x + dir * 7, y - 10 - swing, 5, 3), new Color(200, 200, 210));
+            if (u.HitFlash > 0) DrawRect(body, new Color(255, 255, 255, 110));
+        }
+
+        private void DrawRanged(Unit u, Color team, Color dark)
+        {
+            float bob = (float)Math.Sin(u.WalkPhase * 2.4f) * 1.2f;
+            int x = (int)u.Pos.X;
+            int y = (int)(u.Pos.Y + bob);
+            var body = new Rectangle(x - 8, y - 8, 16, 18);
+            DrawRect(new Rectangle(body.X + 2, body.Bottom, body.Width - 2, 4), new Color(0, 0, 0, 50));
+            DrawRect(body, u.Def.Color);
+            DrawRect(body, dark, 2);
+            // head/core
+            DrawRect(new Rectangle(x - 5, y - 13, 10, 8), Color.Lerp(u.Def.Color, Color.White, 0.2f));
+            DrawRect(new Rectangle(x - 2, y - 11, 4, 4), new Color(255, 255, 255, 180));
+            // team marker
+            DrawRect(new Rectangle(x - 5, y + 1, 10, 3), team);
+            // barrel
+            int dir = u.Facing.X >= 0 ? 1 : -1;
+            DrawRect(new Rectangle(x + dir * 6, y - 2, 8, 4), new Color(60, 60, 70));
+            if (u.AttackAnim > 0) DrawRect(new Rectangle(x + dir * 14, y - 3, 4, 6), new Color(255, 255, 200));
+            if (u.HitFlash > 0) DrawRect(body, new Color(255, 255, 255, 110));
+        }
+
+        private void DrawColossus(Unit u, Color team, Color dark)
+        {
+            float bob = (float)Math.Sin(u.WalkPhase * 1.4f) * 2.0f;
+            int x = (int)u.Pos.X;
+            int y = (int)(u.Pos.Y + bob);
+            // shadow
+            DrawRect(new Rectangle(x - 14, y + 18, 28, 6), new Color(0, 0, 0, 60));
+            // legs
+            int step = (int)(Math.Sin(u.WalkPhase * 1.4f) * 2f);
+            DrawRect(new Rectangle(x - 10, y + 8 + step, 7, 12), Color.Lerp(u.Def.Color, Color.Black, 0.35f));
+            DrawRect(new Rectangle(x + 3, y + 8 - step, 7, 12), Color.Lerp(u.Def.Color, Color.Black, 0.35f));
+            // body
+            var body = new Rectangle(x - 16, y - 10, 32, 22);
+            DrawRect(body, u.Def.Color);
+            DrawRect(body, dark, 2);
+            DrawRect(new Rectangle(body.X + 3, body.Y + 3, body.Width - 6, 6), new Color(255, 255, 255, 35));
+            // shoulders
+            DrawRect(new Rectangle(x - 20, y - 12, 8, 10), Color.Lerp(u.Def.Color, Color.Black, 0.15f));
+            DrawRect(new Rectangle(x + 12, y - 12, 8, 10), Color.Lerp(u.Def.Color, Color.Black, 0.15f));
+            DrawRect(new Rectangle(x - 20, y - 12, 8, 10), dark, 1);
+            DrawRect(new Rectangle(x + 12, y - 12, 8, 10), dark, 1);
+            // head
+            DrawRect(new Rectangle(x - 7, y - 20, 14, 10), Color.Lerp(u.Def.Color, Color.White, 0.12f));
+            DrawRect(new Rectangle(x - 7, y - 20, 14, 10), dark, 1);
+            DrawRect(new Rectangle(x - 4, y - 17, 3, 3), team);
+            DrawRect(new Rectangle(x + 1, y - 17, 3, 3), team);
+            // chest core
+            DrawRect(new Rectangle(x - 4, y - 2, 8, 6), team);
+            if (u.AttackAnim > 0) DrawRect(new Rectangle(x - 18, y - 6, 36, 20), new Color(255, 255, 255, 40));
+            if (u.HitFlash > 0) DrawRect(new Rectangle(x - 20, y - 20, 40, 44), new Color(255, 255, 255, 90));
         }
 
         private void DrawHpBar(int x, int y, int w, int h, int hp, int maxHp)

@@ -81,6 +81,7 @@
     <Compile Include="Game\CardDef.cs" />
     <Compile Include="Game\Unit.cs" />
     <Compile Include="Game\Tower.cs" />
+    <Compile Include="Game\Projectile.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

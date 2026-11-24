@@ -142,9 +142,9 @@ namespace LumiaRoyale.Game
 
             int w = GraphicsDevice.Viewport.Width;
             int h = GraphicsDevice.Viewport.Height;
-            int margin = Math.Max(14, w / 36);
-            int arenaTop = Math.Max(88, h / 12);
-            int arenaBottom = h - Math.Max(150, h / 7);
+            int margin = Math.Max(10, w / 48);
+            int arenaTop = Math.Max(80, h / 14);
+            int arenaBottom = h - Math.Max(140, h / 8);
             _arenaRect = new Rectangle(margin, arenaTop, w - margin * 2, arenaBottom - arenaTop);
 
             float leftLaneX = _arenaRect.Left + _arenaRect.Width * 0.25f;
@@ -406,7 +406,8 @@ namespace LumiaRoyale.Game
             foreach (var t in _towers)
             {
                 if (!t.Alive || t.IsEnemy == enemy) continue;
-                if (Vector2.Distance(t.Pos, pos) <= card.AreaRadius + 26f)
+                float tr = t.IsMain ? 34f : 28f;
+                if (Vector2.Distance(t.Pos, pos) <= card.AreaRadius + tr)
                 {
                     t.Hp -= card.Damage;
                     t.HitFlash = 0.15f;
@@ -742,7 +743,8 @@ namespace LumiaRoyale.Game
                 foreach (var t in _towers)
                 {
                     if (!t.Alive || t.IsEnemy == !p.ByPlayer) continue;
-                    if (Vector2.Distance(t.Pos, hitPos) <= p.AreaRadius + 26f) DamageTower(t, p.Damage, p.ByPlayer);
+                    float tr = t.IsMain ? 34f : 28f;
+                    if (Vector2.Distance(t.Pos, hitPos) <= p.AreaRadius + tr) DamageTower(t, p.Damage, p.ByPlayer);
                 }
             }
             else
@@ -818,7 +820,8 @@ namespace LumiaRoyale.Game
                     {
                         if (!t.Alive) continue;
                         if (t.IsEnemy == !p.ByPlayer) continue;
-                        if (Vector2.DistanceSquared(p.Pos, t.Pos) <= (24f + p.Radius) * (24f + p.Radius))
+                        float tr = t.IsMain ? 34f : 28f;
+                        if (Vector2.DistanceSquared(p.Pos, t.Pos) <= (tr + p.Radius) * (tr + p.Radius))
                         {
                             ApplyProjectileDamage(p, t.Pos);
                             hit = true;
@@ -923,7 +926,8 @@ namespace LumiaRoyale.Game
                 {
                     bestStructureScore = score;
                     var tw = t;
-                    bestStructure = new TargetInfo { pos = tw.Pos, radius = 24f, isTower = true, isMain = tw.IsMain, isEnemy = tw.IsEnemy, unit = null, tower = tw, applyDamage = dmg => { DamageTower(tw, dmg, !u.IsEnemy); } };
+                    float tr = tw.IsMain ? 34f : 28f;
+                    bestStructure = new TargetInfo { pos = tw.Pos, radius = tr, isTower = true, isMain = tw.IsMain, isEnemy = tw.IsEnemy, unit = null, tower = tw, applyDamage = dmg => { DamageTower(tw, dmg, !u.IsEnemy); } };
                 }
             }
 
@@ -1148,20 +1152,20 @@ namespace LumiaRoyale.Game
                 if (!t.Alive) continue;
                 Color team = t.IsEnemy ? new Color(208, 74, 74) : new Color(74, 146, 226);
                 Color teamDark = t.IsEnemy ? new Color(120, 36, 36) : new Color(36, 78, 132);
-                int size = t.IsMain ? 46 : 36;
+                int size = t.IsMain ? 64 : 50;
                 var body = new Rectangle((int)t.Pos.X - size / 2, (int)t.Pos.Y - size / 2, size, size);
-                var baseR = new Rectangle(body.X - 4, body.Bottom - 8, body.Width + 8, 10);
-                DrawRect(new Rectangle(baseR.X + 3, baseR.Y + 5, baseR.Width, baseR.Height), new Color(0, 0, 0, 45));
+                var baseR = new Rectangle(body.X - 6, body.Bottom - 10, body.Width + 12, 14);
+                DrawRect(new Rectangle(baseR.X + 4, baseR.Y + 6, baseR.Width, baseR.Height), new Color(0, 0, 0, 45));
                 DrawRect(baseR, new Color(88, 88, 96));
                 DrawRect(body, new Color(165, 170, 180));
                 DrawRect(body, teamDark, 2);
-                var top = new Rectangle(body.X + 5, body.Y + 5, body.Width - 10, 10);
+                var top = new Rectangle(body.X + 6, body.Y + 6, body.Width - 12, 12);
                 DrawRect(top, team);
-                DrawRect(new Rectangle(body.Center.X - 4, body.Y - 8, 8, 12), teamDark);
+                DrawRect(new Rectangle(body.Center.X - 5, body.Y - 10, 10, 14), teamDark);
                 if (t.HitFlash > 0) DrawRect(body, new Color(255, 255, 255, 120));
 
                 float pct = Math.Max(0, (float)t.Hp / t.MaxHp);
-                var hbg = new Rectangle(body.X - 6, body.Y - 14, body.Width + 12, 6);
+                var hbg = new Rectangle(body.X - 8, body.Y - 16, body.Width + 16, 7);
                 var hfg = new Rectangle(hbg.X, hbg.Y, (int)(hbg.Width * pct), hbg.Height);
                 DrawRect(hbg, new Color(20, 20, 20, 200));
                 DrawRect(hfg, pct > 0.35f ? new Color(110, 220, 90) : new Color(230, 90, 70));
@@ -1191,9 +1195,9 @@ namespace LumiaRoyale.Game
                 else if (u.Def.Kind == CardKind.Ranged) DrawRanged(u, team, dark);
                 else DrawMelee(u, team, dark);
 
-                int hpW = u.Def.Id == "pulso" ? 30 : (u.Def.Id == "enxame" ? 14 : 22);
-                int hpY = u.Def.Id == "pulso" ? 28 : (u.Def.Id == "enxame" ? 12 : 16);
-                DrawHpBar((int)u.Pos.X - hpW / 2, (int)u.Pos.Y - hpY, hpW, 3, u.Hp, u.MaxHp);
+                int hpW = u.Def.Id == "pulso" ? 40 : (u.Def.Id == "enxame" ? 18 : 28);
+                int hpY = u.Def.Id == "pulso" ? 34 : (u.Def.Id == "enxame" ? 14 : 22);
+                DrawHpBar((int)u.Pos.X - hpW / 2, (int)u.Pos.Y - hpY, hpW, 4, u.Hp, u.MaxHp);
             }
         }
 
@@ -1333,9 +1337,9 @@ namespace LumiaRoyale.Game
             var src = new Rectangle(col * 32, dirRow * 32, 32, 32);
 
             float bob = animGroup == 1 ? (float)Math.Sin(u.WalkPhase) * 1.2f : 0f;
-            int size = u.Def.Id == "pulso" ? 36 : 28;
+            int size = u.Def.Id == "pulso" ? 52 : 40;
             var dst = new Rectangle((int)(u.Pos.X - size / 2f), (int)(u.Pos.Y - size / 2f + bob - 2), size, size);
-            DrawRect(new Rectangle(dst.X + 5, dst.Bottom - 4, dst.Width - 10, 3), new Color(0, 0, 0, 45));
+            DrawRect(new Rectangle(dst.X + 6, dst.Bottom - 5, dst.Width - 12, 4), new Color(0, 0, 0, 45));
 
             Color tint = Color.Lerp(Color.White, team, 0.08f);
             if (u.HitFlash > 0) tint = Color.Lerp(tint, Color.White, 0.75f);

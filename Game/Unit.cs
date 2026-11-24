@@ -37,10 +37,10 @@ namespace LumiaRoyale.Game
 
         private float GetRadius()
         {
-            if (IsBuilding) return 14f;
-            if (Def.Id == "pulso") return 16f;
-            if (Def.Id == "enxame") return 7f;
-            return Def.Kind == CardKind.Melee ? 11f : 9f;
+            if (IsBuilding) return 20f;
+            if (Def.Id == "pulso") return 24f;
+            if (Def.Id == "enxame") return 10f;
+            return Def.Kind == CardKind.Melee ? 16f : 14f;
         }
     }
 }

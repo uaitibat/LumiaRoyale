@@ -23,7 +23,7 @@ namespace LumiaRoyale.Game
             Hp = MaxHp = hp;
             IsMain = isMain;
             IsEnemy = isEnemy;
-            Range = isMain ? 125f : 110f;
+            Range = isMain ? 145f : 125f;
             Damage = isMain ? 26 : 20;
             Cooldown = 1.0f;
             HitFlash = 0f;

@@ -1619,7 +1619,8 @@ namespace LumiaRoyale.Game
 
                 var nameR = new Rectangle(r.X + 40, r.Bottom - 30, r.Width - 46, 22);
                 DrawBeveledPanel(nameR, true);
-                DrawPixelText(def.Name.ToUpperInvariant(), nameR.X + 4, nameR.Y + 6, 2, canAfford ? Se98Text : Se98Shadow);
+                DrawRect(new Rectangle(nameR.X + 2, nameR.Y + 2, nameR.Width - 4, nameR.Height - 4), canAfford ? Se98Selected : new Color(60, 64, 74));
+                DrawPixelText(def.Name.ToUpperInvariant(), nameR.X + 4, nameR.Y + 6, 2, canAfford ? Color.White : new Color(200, 200, 200));
                 if (!canAfford) DrawRect(r, new Color(0, 0, 0, 25));
             }
         }

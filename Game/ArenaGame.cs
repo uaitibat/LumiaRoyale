@@ -232,6 +232,26 @@ namespace LumiaRoyale.Game
                     return;
                 }
 
+                if (_matchState == "paused")
+                {
+                    int w = GraphicsDevice.Viewport.Width;
+                    int h = GraphicsDevice.Viewport.Height;
+                    var resume = new Rectangle(w / 2 - 110, h / 2 - 20, 220, 44);
+                    var restart = new Rectangle(w / 2 - 110, h / 2 + 36, 220, 44);
+                    if (resume.Contains((int)p.X, (int)p.Y)) { _matchState = "playing"; _status = "Retomado"; _statusTimer = 1f; }
+                    else if (restart.Contains((int)p.X, (int)p.Y)) { ResetMatch(); }
+                    return;
+                }
+
+                // pause button top-right HUD
+                var pauseBtn = new Rectangle(GraphicsDevice.Viewport.Width - 44, 18, 36, 36);
+                if (pauseBtn.Contains((int)p.X, (int)p.Y))
+                {
+                    _matchState = "paused";
+                    _selectedHand = -1;
+                    return;
+                }
+
                 var cardRects = GetCardRects();
                 for (int i = 0; i < 4; i++)
                 {
@@ -474,7 +494,6 @@ namespace LumiaRoyale.Game
             if (rightThreat > leftThreat) laneX = rightX;
             else if (rightThreat == leftThreat)
             {
-                // prefer lane where player's side tower is lower HP
                 var pl = _towers.FirstOrDefault(t => !t.IsEnemy && !t.IsMain && t.Alive && Math.Abs(t.Pos.X - leftX) < 20f);
                 var pr = _towers.FirstOrDefault(t => !t.IsEnemy && !t.IsMain && t.Alive && Math.Abs(t.Pos.X - rightX) < 20f);
                 int lh = pl != null ? pl.Hp : 99999;
@@ -482,15 +501,24 @@ namespace LumiaRoyale.Game
                 laneX = rh < lh ? rightX : leftX;
             }
 
+            // If player side tower in chosen lane is down, sometimes deploy in pocket to pressure
+            var oppSide = _towers.FirstOrDefault(t => !t.IsEnemy && !t.IsMain && Math.Abs(t.Pos.X - laneX) < 20f);
+            bool pocketAvailable = oppSide != null && !oppSide.Alive;
+            bool canPocket = pocketAvailable && card.Kind != CardKind.Building && _enemyMana >= 5f;
+            if (canPocket && _rng.NextDouble() < 0.45)
+            {
+                float px = laneX + ((float)_rng.NextDouble() - 0.5f) * (_arenaRect.Width * 0.2f);
+                float py = _arenaRect.Bottom - _arenaRect.Height * 0.28f + (float)_rng.NextDouble() * (_arenaRect.Height * 0.12f);
+                return new Vector2(px, py);
+            }
+
             float y;
             if (card.Kind == CardKind.Building)
             {
-                // place defensively behind river on chosen lane
                 y = _arenaRect.Center.Y - 70f - (float)_rng.NextDouble() * 40f;
             }
             else
             {
-                // defend near threat or push at bridge approach
                 var laneThreats = playerUnits.Where(u => Math.Abs(u.Pos.X - laneX) < _arenaRect.Width * 0.35f && u.Pos.Y < _arenaRect.Center.Y).ToList();
                 if (laneThreats.Count > 0)
                 {
@@ -656,7 +684,7 @@ namespace LumiaRoyale.Game
             Vector2 dir = target.pos - u.Pos;
             if (dir.LengthSquared() < 1f) dir = u.Facing;
             dir.Normalize();
-            float speed = 260f;
+            float speed = u.Def.AreaRadius > 0 ? 220f : 260f;
             var p = new Projectile
             {
                 Pos = u.Pos + dir * (u.Radius + 4f),
@@ -664,12 +692,53 @@ namespace LumiaRoyale.Game
                 Damage = u.Def.Damage,
                 ByPlayer = !u.IsEnemy,
                 Color = u.Def.Color,
-                Radius = 4f,
+                Radius = u.Def.AreaRadius > 0 ? 5f : 4f,
                 Life = 2.5f,
                 UnitTarget = target.unit,
-                TowerTarget = target.tower
+                TowerTarget = target.tower,
+                AreaRadius = u.Def.AreaRadius
             };
             _projectiles.Add(p);
+        }
+
+        private void ApplyProjectileDamage(Projectile p, Vector2 hitPos)
+        {
+            if (p.AreaRadius > 0)
+            {
+                AddFx(hitPos, p.Color, p.AreaRadius, 0.22f, "hit");
+                foreach (var u in _units)
+                {
+                    if (!u.Alive || u.IsEnemy == !p.ByPlayer) continue;
+                    if (Vector2.Distance(u.Pos, hitPos) <= p.AreaRadius + u.Radius) { u.Hp -= p.Damage; u.HitFlash = 0.12f; }
+                }
+                foreach (var t in _towers)
+                {
+                    if (!t.Alive || t.IsEnemy == !p.ByPlayer) continue;
+                    if (Vector2.Distance(t.Pos, hitPos) <= p.AreaRadius + 26f) DamageTower(t, p.Damage, p.ByPlayer);
+                }
+            }
+            else
+            {
+                if (p.UnitTarget != null && p.UnitTarget.Alive && p.UnitTarget.IsEnemy == !p.ByPlayer && Vector2.Distance(p.UnitTarget.Pos, hitPos) < 80f)
+                {
+                    p.UnitTarget.Hp -= p.Damage; p.UnitTarget.HitFlash = 0.12f;
+                }
+                else if (p.TowerTarget != null && p.TowerTarget.Alive && p.TowerTarget.IsEnemy == !p.ByPlayer && Vector2.Distance(p.TowerTarget.Pos, hitPos) < 80f)
+                {
+                    DamageTower(p.TowerTarget, p.Damage, p.ByPlayer);
+                }
+                else
+                {
+                    // fallback: damage nearest enemy at hit
+                    foreach (var u in _units)
+                    {
+                        if (!u.Alive || u.IsEnemy == !p.ByPlayer) continue;
+                        if (Vector2.DistanceSquared(p.Pos, u.Pos) <= (u.Radius + p.Radius + 2f) * (u.Radius + p.Radius + 2f))
+                        { u.Hp -= p.Damage; u.HitFlash = 0.12f; break; }
+                    }
+                }
+                AddFx(hitPos, p.Color, 8f, 0.14f, "hit");
+            }
         }
 
         private void UpdateProjectiles(float dt)
@@ -710,9 +779,7 @@ namespace LumiaRoyale.Game
                     if (u.IsEnemy == !p.ByPlayer) continue;
                     if (Vector2.DistanceSquared(p.Pos, u.Pos) <= (u.Radius + p.Radius) * (u.Radius + p.Radius))
                     {
-                        u.Hp -= p.Damage;
-                        u.HitFlash = 0.12f;
-                        AddFx(p.Pos, p.Color, 8f, 0.14f, "hit");
+                        ApplyProjectileDamage(p, u.Pos);
                         hit = true;
                         break;
                     }
@@ -725,8 +792,7 @@ namespace LumiaRoyale.Game
                         if (t.IsEnemy == !p.ByPlayer) continue;
                         if (Vector2.DistanceSquared(p.Pos, t.Pos) <= (24f + p.Radius) * (24f + p.Radius))
                         {
-                            DamageTower(t, p.Damage, p.ByPlayer);
-                            AddFx(p.Pos, p.Color, 8f, 0.14f, "hit");
+                            ApplyProjectileDamage(p, t.Pos);
                             hit = true;
                             break;
                         }
@@ -1091,6 +1157,7 @@ namespace LumiaRoyale.Game
 
                 if (u.Def.Id == "pulso") DrawColossus(u, team, dark);
                 else if (u.Def.Id == "enxame") DrawSwarm(u, team, dark);
+                else if (u.Def.Id == "eco") DrawEco(u, team, dark);
                 else if (u.Def.Kind == CardKind.Ranged) DrawRanged(u, team, dark);
                 else DrawMelee(u, team, dark);
 
@@ -1114,6 +1181,31 @@ namespace LumiaRoyale.Game
             int dir = u.Facing.X >= 0 ? 1 : -1;
             DrawRect(new Rectangle(x + dir * 4, y - 2, 2, 6), new Color(230, 230, 240));
             if (u.HitFlash > 0) DrawRect(body, new Color(255, 255, 255, 120));
+        }
+
+        private void DrawEco(Unit u, Color team, Color dark)
+        {
+            float bob = (float)Math.Sin(u.WalkPhase * 1.8f) * 1.5f;
+            int x = (int)u.Pos.X;
+            int y = (int)(u.Pos.Y + bob);
+            var body = new Rectangle(x - 10, y - 10, 20, 22);
+            DrawRect(new Rectangle(body.X + 2, body.Bottom, body.Width - 2, 4), new Color(0, 0, 0, 50));
+            DrawRect(body, u.Def.Color);
+            DrawRect(body, dark, 2);
+            DrawRect(new Rectangle(x - 7, y - 15, 14, 8), Color.Lerp(u.Def.Color, Color.White, 0.18f));
+            DrawRect(new Rectangle(x - 7, y - 15, 14, 8), dark, 1);
+            // cannon core
+            DrawRect(new Rectangle(x - 4, y - 2, 8, 8), new Color(60, 40, 60));
+            DrawRect(new Rectangle(x - 2, y, 4, 4), team);
+            // cannon barrel
+            int dir = u.Facing.X >= 0 ? 1 : -1;
+            DrawRect(new Rectangle(x + dir * 7, y - 1, 10, 5), new Color(70, 60, 80));
+            if (u.AttackAnim > 0)
+            {
+                DrawRect(new Rectangle(x + dir * 16, y - 4, 8, 10), new Color(255, 200, 230, 180));
+                DrawRect(new Rectangle(x - 14, y - 14, 28, 28), new Color(u.Def.Color, 40), 1);
+            }
+            if (u.HitFlash > 0) DrawRect(body, new Color(255, 255, 255, 110));
         }
 
         private void DrawBuildingUnit(Unit u, Color team, Color dark)
@@ -1255,6 +1347,8 @@ namespace LumiaRoyale.Game
             var timeColor = sec <= 30 ? new Color(255, 120, 120) : Color.White;
             DrawStatusText((sec / 60) + ":" + (sec % 60).ToString("00"), GraphicsDevice.Viewport.Width / 2 - 24, 12, 6, timeColor);
             DrawStatusText(_playerCrowns + "x" + _enemyCrowns, GraphicsDevice.Viewport.Width - 52, 12, 6, new Color(255, 230, 140));
+            if (_matchState == "playing")
+                DrawStatusText("II", GraphicsDevice.Viewport.Width - 24, 28, 6, new Color(200, 200, 200));
         }
 
         private void DrawCards()
@@ -1420,6 +1514,21 @@ namespace LumiaRoyale.Game
                 DrawPixelText("ARENA DE CARTAS", box.X + 72, box.Y + 66, 2, new Color(200, 230, 200));
                 DrawPixelText("TOQUE PARA JOGAR", box.X + 68, box.Y + 110, 2, new Color(255, 230, 140));
                 DrawPixelText("DESTRUA A TORRE PRINCIPAL", box.X + 34, box.Y + 140, 2, new Color(180, 200, 180));
+                return;
+            }
+
+            if (_matchState == "paused")
+            {
+                var box = new Rectangle(GraphicsDevice.Viewport.Width / 2 - 140, GraphicsDevice.Viewport.Height / 2 - 90, 280, 170);
+                DrawRect(box, new Color(35, 45, 55));
+                DrawRect(box, Color.White, 2);
+                DrawPixelText("PAUSADO", box.X + 80, box.Y + 24, 4, Color.White);
+                var resume = new Rectangle(box.X + 30, box.Y + 72, 220, 34);
+                var restart = new Rectangle(box.X + 30, box.Y + 114, 220, 34);
+                DrawRect(resume, new Color(70, 130, 80)); DrawRect(resume, Color.White, 1);
+                DrawRect(restart, new Color(130, 70, 70)); DrawRect(restart, Color.White, 1);
+                DrawPixelText("RETOMAR", resume.X + 72, resume.Y + 11, 2, Color.White);
+                DrawPixelText("REINICIAR", restart.X + 64, restart.Y + 11, 2, Color.White);
                 return;
             }
 

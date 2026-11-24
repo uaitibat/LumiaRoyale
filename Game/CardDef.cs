@@ -36,7 +36,8 @@ namespace LumiaRoyale.Game
                 new CardDef { Id="faisca", Name="Faisca",   Cost=2, Hp=120, Damage=20, Speed=50f, Range=92f, AttackCooldown=0.65f, Color=new Color(120, 255, 180), Kind=CardKind.Ranged },
                 new CardDef { Id="nova", Name="Nova",       Cost=4, Hp=0,   Damage=150, Speed=0f,  Range=0f, AttackCooldown=0f, AreaRadius=60f, Color=new Color(255, 130, 70), Kind=CardKind.Spell },
                 new CardDef { Id="torreta", Name="Torreta", Cost=3, Hp=380, Damage=30, Speed=0f, Range=122f, AttackCooldown=0.8f, Lifetime=26f, Color=new Color(180, 200, 220), Kind=CardKind.Building },
-                new CardDef { Id="enxame", Name="Enxame",   Cost=3, Hp=75,  Damage=18, Speed=46f, Range=18f, AttackCooldown=0.7f, SpawnCount=4, Color=new Color(140, 220, 120), Kind=CardKind.Melee }
+                new CardDef { Id="enxame", Name="Enxame",   Cost=3, Hp=75,  Damage=18, Speed=46f, Range=18f, AttackCooldown=0.7f, SpawnCount=4, Color=new Color(140, 220, 120), Kind=CardKind.Melee },
+                new CardDef { Id="eco",    Name="Eco",      Cost=4, Hp=210, Damage=55, Speed=24f, Range=115f, AttackCooldown=1.6f, AreaRadius=34f, Color=new Color(255, 110, 180), Kind=CardKind.Ranged }
             };
         }
     }

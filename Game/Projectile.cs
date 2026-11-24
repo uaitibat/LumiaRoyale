@@ -11,6 +11,7 @@ namespace LumiaRoyale.Game
         public Color Color;
         public float Radius;
         public float Life;
+        public float AreaRadius;
         public Unit UnitTarget;
         public Tower TowerTarget;
         public bool Alive = true;

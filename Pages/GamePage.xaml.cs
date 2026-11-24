@@ -1,9 +1,7 @@
-using Windows.Graphics.Display;
-using Windows.UI.Core;
-using Windows.UI.ViewManagement;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using LumiaRoyale.Game;
+using MonoGame.Framework;
 
 namespace LumiaRoyale.Pages
 {
@@ -14,18 +12,8 @@ namespace LumiaRoyale.Pages
         public GamePage()
         {
             InitializeComponent();
-
-            ApplicationView.PreferredLaunchWindowingMode = ApplicationViewWindowingMode.FullScreen;
-            DisplayInformation.AutoRotationPreferences = DisplayOrientations.Portrait;
-
-            _game = new ArenaGame(SwapPanel);
-            Window.Current.CoreWindow.KeyDown += CoreWindow_KeyDown;
-        }
-
-        private void CoreWindow_KeyDown(CoreWindow sender, KeyEventArgs args)
-        {
-            if (args.VirtualKey == Windows.System.VirtualKey.Escape && _game != null)
-                _game.Exit();
+            var launchArguments = string.Empty;
+            _game = XamlGame<ArenaGame>.Create(launchArguments, Window.Current.CoreWindow, SwapPanel);
         }
     }
 }

@@ -31,31 +31,27 @@ namespace LumiaRoyale.Game
         private float _enemySpawnTimer;
         private string _status = "Toque numa carta e depois na sua metade da arena";
 
-        private int _screenW;
-        private int _screenH;
         private Rectangle _arenaRect;
 
-        public ArenaGame(Windows.UI.Xaml.Controls.SwapChainPanel panel)
+        public ArenaGame()
         {
             _graphics = new GraphicsDeviceManager(this);
             Content.RootDirectory = "Content";
             IsFixedTimeStep = true;
             TargetElapsedTime = TimeSpan.FromSeconds(1.0 / 30.0);
 
-            // Use real screen pixels
+            // Use real screen pixels (Lumia 640 => ~720x1280 portrait)
             ApplicationView.PreferredLaunchWindowingMode = ApplicationViewWindowingMode.FullScreen;
             DisplayInformation.AutoRotationPreferences = DisplayOrientations.Portrait;
+
             var di = DisplayInformation.GetForCurrentView();
             var b = CoreWindow.GetForCurrentThread().Bounds;
-            _screenW = Math.Max(1, (int)(b.Width * di.RawPixelsPerViewPixel));
-            _screenH = Math.Max(1, (int)(b.Height * di.RawPixelsPerViewPixel));
-            _graphics.PreferredBackBufferWidth = _screenW;
-            _graphics.PreferredBackBufferHeight = _screenH;
+            int screenW = Math.Max(1, (int)(b.Width * di.RawPixelsPerViewPixel));
+            int screenH = Math.Max(1, (int)(b.Height * di.RawPixelsPerViewPixel));
+            _graphics.PreferredBackBufferWidth = screenW;
+            _graphics.PreferredBackBufferHeight = screenH;
             _graphics.SupportedOrientations = DisplayOrientation.Portrait;
             _graphics.IsFullScreen = true;
-
-            // MonoGame UWP hosts on SwapChainPanel
-            _graphics.SwapChainPanel = panel;
         }
 
         protected override void Initialize()
@@ -110,7 +106,7 @@ namespace LumiaRoyale.Game
 
             HandleInput();
 
-            if (IsMatchOver()) return;
+            if (IsMatchOver()) { base.Update(gameTime); return; }
 
             _mana = Math.Min(ManaMax, _mana + dt * 0.55f);
             _enemyMana = Math.Min(ManaMax, _enemyMana + dt * 0.55f);
@@ -149,7 +145,6 @@ namespace LumiaRoyale.Game
 
                 if (IsMatchOver()) { ResetMatch(); return; }
 
-                // card selection
                 int cardH = 110;
                 int cardY = GraphicsDevice.Viewport.Height - cardH - 10;
                 int cardW = (GraphicsDevice.Viewport.Width - 40) / 4;
@@ -164,7 +159,6 @@ namespace LumiaRoyale.Game
                     }
                 }
 
-                // deploy on player half
                 if (_selectedHand >= 0)
                 {
                     var card = _hand[_selectedHand];
@@ -308,10 +302,8 @@ namespace LumiaRoyale.Game
         private void DrawArena()
         {
             DrawRect(_arenaRect, new Color(45, 120, 65));
-            // river
             var river = new Rectangle(_arenaRect.Left, _arenaRect.Center.Y - 12, _arenaRect.Width, 24);
             DrawRect(river, new Color(60, 130, 200));
-            // bridges
             DrawRect(new Rectangle(_arenaRect.Left + _arenaRect.Width / 4 - 20, river.Y - 4, 40, 32), new Color(140, 110, 80));
             DrawRect(new Rectangle(_arenaRect.Left + 3 * _arenaRect.Width / 4 - 20, river.Y - 4, 40, 32), new Color(140, 110, 80));
         }
@@ -326,7 +318,6 @@ namespace LumiaRoyale.Game
                 var r = new Rectangle((int)t.Pos.X - size / 2, (int)t.Pos.Y - size / 2, size, size);
                 DrawRect(r, c);
                 DrawRect(r, Color.White, 2);
-                // hp bar
                 float pct = Math.Max(0, (float)t.Hp / t.MaxHp);
                 var bg = new Rectangle(r.X - 4, r.Y - 10, r.Width + 8, 5);
                 var fg = new Rectangle(bg.X, bg.Y, (int)(bg.Width * pct), bg.Height);
@@ -350,7 +341,6 @@ namespace LumiaRoyale.Game
         private void DrawHud()
         {
             DrawRect(new Rectangle(0, 0, GraphicsDevice.Viewport.Width, 70), new Color(0, 0, 0, 160));
-            // mana bar
             int barW = GraphicsDevice.Viewport.Width - 40;
             var bg = new Rectangle(20, 40, barW, 16);
             var fg = new Rectangle(20, 40, (int)(barW * (_mana / ManaMax)), 16);
@@ -373,7 +363,6 @@ namespace LumiaRoyale.Game
                 var def = _hand[i];
                 if (def == null) continue;
                 DrawRect(new Rectangle(r.X + 8, r.Y + 8, r.Width - 16, 50), def.Color);
-                // cost indicator
                 DrawRect(new Rectangle(r.X + 6, r.Bottom - 28, 26, 20), new Color(120, 60, 180));
             }
         }

@@ -722,26 +722,46 @@ namespace LumiaRoyale.Game
         {
             TargetInfo? best = null;
             float bestScore = float.MaxValue;
+            bool buildingOnly = u.Def.Id == "pulso"; // Colosso targets only buildings/towers
 
+            if (!buildingOnly)
+            {
+                foreach (var other in _units)
+                {
+                    if (other.IsEnemy == u.IsEnemy || !other.Alive) continue;
+                    float d = Vector2.Distance(u.Pos, other.Pos);
+                    float score = d;
+                    if (d < 140f) score -= 40f; // prefer nearby threats
+                    if (score < bestScore)
+                    {
+                        bestScore = score;
+                        var o = other;
+                        best = new TargetInfo { pos = o.Pos, radius = o.Radius, isTower = false, isMain = false, isEnemy = o.IsEnemy, unit = o, tower = null, applyDamage = dmg => { o.Hp -= dmg; o.HitFlash = 0.12f; } };
+                    }
+                }
+
+                // If a unit is already close to combat, keep it on unit target; otherwise route to towers.
+                if (best.HasValue && bestScore < 120f) return best;
+            }
+
+            TargetInfo? bestStructure = null;
+            float bestStructureScore = float.MaxValue;
+
+            // enemy buildings (e.g. Torreta)
             foreach (var other in _units)
             {
-                if (other.IsEnemy == u.IsEnemy || !other.Alive) continue;
+                if (other.IsEnemy == u.IsEnemy || !other.Alive || !other.IsBuilding) continue;
                 float d = Vector2.Distance(u.Pos, other.Pos);
-                float score = d;
-                if (d < 140f) score -= 40f; // prefer nearby threats
-                if (score < bestScore)
+                float laneDist = Math.Abs(other.Pos.X - u.LaneX);
+                float score = d + laneDist * 0.2f - 30f;
+                if (score < bestStructureScore)
                 {
-                    bestScore = score;
+                    bestStructureScore = score;
                     var o = other;
-                    best = new TargetInfo { pos = o.Pos, radius = o.Radius, isTower = false, isMain = false, isEnemy = o.IsEnemy, unit = o, tower = null, applyDamage = dmg => { o.Hp -= dmg; o.HitFlash = 0.12f; } };
+                    bestStructure = new TargetInfo { pos = o.Pos, radius = o.Radius, isTower = false, isMain = false, isEnemy = o.IsEnemy, unit = o, tower = null, applyDamage = dmg => { o.Hp -= dmg; o.HitFlash = 0.12f; } };
                 }
             }
 
-            // If a unit is already close to combat, keep it on unit target; otherwise route to towers.
-            if (best.HasValue && bestScore < 120f) return best;
-
-            TargetInfo? bestTower = null;
-            float bestTowerScore = float.MaxValue;
             foreach (var t in _towers)
             {
                 if (t.IsEnemy == u.IsEnemy || !t.Alive) continue;
@@ -749,15 +769,16 @@ namespace LumiaRoyale.Game
                 float d = Vector2.Distance(u.Pos, t.Pos);
                 float score = d + laneDist * 0.35f;
                 if (!t.IsMain) score -= 60f; // side towers first
-                if (score < bestTowerScore)
+                if (score < bestStructureScore)
                 {
-                    bestTowerScore = score;
+                    bestStructureScore = score;
                     var tw = t;
-                    bestTower = new TargetInfo { pos = tw.Pos, radius = 24f, isTower = true, isMain = tw.IsMain, isEnemy = tw.IsEnemy, unit = null, tower = tw, applyDamage = dmg => { DamageTower(tw, dmg, !u.IsEnemy); } };
+                    bestStructure = new TargetInfo { pos = tw.Pos, radius = 24f, isTower = true, isMain = tw.IsMain, isEnemy = tw.IsEnemy, unit = null, tower = tw, applyDamage = dmg => { DamageTower(tw, dmg, !u.IsEnemy); } };
                 }
             }
 
-            return bestTower ?? best;
+            if (buildingOnly) return bestStructure;
+            return bestStructure ?? best;
         }
 
         private Vector2 GetMoveTarget(Unit u, TargetInfo target)

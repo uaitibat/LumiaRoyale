@@ -91,6 +91,11 @@
     <Content Include="Assets\**\*" />
   </ItemGroup>
   <ItemGroup>
+    <AppxPackagePayload Include="Assets\**\*">
+      <TargetPath>Assets\%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
+    </AppxPackagePayload>
+  </ItemGroup>
+  <ItemGroup>
     <ApplicationDefinition Include="App.xaml"><Generator>MSBuild:Compile</Generator><SubType>Designer</SubType></ApplicationDefinition>
     <Page Include="Pages\GamePage.xaml"><Generator>MSBuild:Compile</Generator><SubType>Designer</SubType></Page>
   </ItemGroup>

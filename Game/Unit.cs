@@ -12,11 +12,12 @@ namespace LumiaRoyale.Game
         public float AttackTimer;
         public float HitFlash;
         public float LifeLeft;
+        public float LaneX;
         public bool IsBuilding => Def.Kind == CardKind.Building;
         public bool Alive => Hp > 0 && (!IsBuilding || LifeLeft > 0f);
         public float Radius => IsBuilding ? 14f : (Def.Kind == CardKind.Melee ? 11f : 9f);
 
-        public Unit(CardDef def, Vector2 pos, bool isEnemy)
+        public Unit(CardDef def, Vector2 pos, bool isEnemy, float laneX)
         {
             Def = def;
             Pos = pos;
@@ -25,6 +26,7 @@ namespace LumiaRoyale.Game
             AttackTimer = 0f;
             HitFlash = 0f;
             LifeLeft = def.Lifetime;
+            LaneX = laneX;
         }
     }
 }

@@ -111,14 +111,18 @@ namespace LumiaRoyale.Game
             int arenaBottom = h - Math.Max(150, h / 7);
             _arenaRect = new Rectangle(margin, arenaTop, w - margin * 2, arenaBottom - arenaTop);
 
-            // Enemy towers (top)
-            _towers.Add(new Tower(new Vector2(w * 0.25f, arenaTop + 70), 900, false, true));
-            _towers.Add(new Tower(new Vector2(w * 0.75f, arenaTop + 70), 900, false, true));
-            _towers.Add(new Tower(new Vector2(w * 0.5f, arenaTop + 150), 1400, true, true));
-            // Player towers (bottom)
-            _towers.Add(new Tower(new Vector2(w * 0.25f, arenaBottom - 70), 900, false, false));
-            _towers.Add(new Tower(new Vector2(w * 0.75f, arenaBottom - 70), 900, false, false));
-            _towers.Add(new Tower(new Vector2(w * 0.5f, arenaBottom - 150), 1400, true, false));
+            float leftLaneX = _arenaRect.Left + _arenaRect.Width * 0.25f;
+            float rightLaneX = _arenaRect.Left + _arenaRect.Width * 0.75f;
+            float centerX = _arenaRect.Left + _arenaRect.Width * 0.5f;
+
+            // Enemy towers (top): side towers forward (closer to river), king receded (closer to top)
+            _towers.Add(new Tower(new Vector2(leftLaneX, arenaTop + 165), 900, false, true));
+            _towers.Add(new Tower(new Vector2(rightLaneX, arenaTop + 165), 900, false, true));
+            _towers.Add(new Tower(new Vector2(centerX, arenaTop + 80), 1400, true, true));
+            // Player towers (bottom): side towers forward (closer to river), king receded (closer to bottom)
+            _towers.Add(new Tower(new Vector2(leftLaneX, arenaBottom - 165), 900, false, false));
+            _towers.Add(new Tower(new Vector2(rightLaneX, arenaBottom - 165), 900, false, false));
+            _towers.Add(new Tower(new Vector2(centerX, arenaBottom - 80), 1400, true, false));
         }
 
         protected override void Update(GameTime gameTime)
@@ -273,8 +277,16 @@ namespace LumiaRoyale.Game
                 CastSpell(card, pos, enemy);
                 return;
             }
-            _units.Add(new Unit(card, pos, enemy));
+            float laneX = GetLaneX(pos.X);
+            _units.Add(new Unit(card, pos, enemy, laneX));
             AddFx(pos, card.Color, card.Kind == CardKind.Building ? 18f : 14f, 0.28f, "spawn");
+        }
+
+        private float GetLaneX(float x)
+        {
+            float left = _arenaRect.Left + _arenaRect.Width * 0.25f;
+            float right = _arenaRect.Left + _arenaRect.Width * 0.75f;
+            return Math.Abs(x - left) <= Math.Abs(x - right) ? left : right;
         }
 
         private void CastSpell(CardDef card, Vector2 pos, bool enemy)
@@ -357,52 +369,130 @@ namespace LumiaRoyale.Game
                 }
                 else if (!u.IsBuilding)
                 {
-                    var dir = target.Value.pos - u.Pos;
+                    Vector2 moveTarget = GetMoveTarget(u, target.Value);
+                    var dir = moveTarget - u.Pos;
                     if (dir.LengthSquared() > 1f)
                     {
                         dir.Normalize();
                         u.Pos += dir * u.Def.Speed * dt;
+                        ClampToArena(u);
                     }
                 }
             }
+        }
+
+        private void ClampToArena(Unit u)
+        {
+            u.Pos.X = MathHelper.Clamp(u.Pos.X, _arenaRect.Left + 12, _arenaRect.Right - 12);
+            u.Pos.Y = MathHelper.Clamp(u.Pos.Y, _arenaRect.Top + 12, _arenaRect.Bottom - 12);
         }
 
         private struct TargetInfo
         {
             public Vector2 pos;
             public float radius;
+            public bool isTower;
+            public bool isMain;
+            public bool isEnemy;
             public Action<int> applyDamage;
         }
 
         private TargetInfo? FindTarget(Unit u)
         {
             TargetInfo? best = null;
-            float bestDist = float.MaxValue;
+            float bestScore = float.MaxValue;
 
             foreach (var other in _units)
             {
                 if (other.IsEnemy == u.IsEnemy || !other.Alive) continue;
                 float d = Vector2.Distance(u.Pos, other.Pos);
-                if (d < bestDist)
+                float score = d;
+                if (d < 140f) score -= 40f; // prefer nearby threats
+                if (score < bestScore)
                 {
-                    bestDist = d;
+                    bestScore = score;
                     var o = other;
-                    best = new TargetInfo { pos = o.Pos, radius = o.Radius, applyDamage = dmg => { o.Hp -= dmg; o.HitFlash = 0.12f; } };
+                    best = new TargetInfo { pos = o.Pos, radius = o.Radius, isTower = false, isMain = false, isEnemy = o.IsEnemy, applyDamage = dmg => { o.Hp -= dmg; o.HitFlash = 0.12f; } };
                 }
             }
 
+            // If a unit is already close to combat, keep it on unit target; otherwise route to towers.
+            if (best.HasValue && bestScore < 120f) return best;
+
+            TargetInfo? bestTower = null;
+            float bestTowerScore = float.MaxValue;
             foreach (var t in _towers)
             {
                 if (t.IsEnemy == u.IsEnemy || !t.Alive) continue;
+                float laneDist = Math.Abs(t.Pos.X - u.LaneX);
                 float d = Vector2.Distance(u.Pos, t.Pos);
-                if (d < bestDist)
+                float score = d + laneDist * 0.35f;
+                if (!t.IsMain) score -= 60f; // side towers first
+                if (score < bestTowerScore)
                 {
-                    bestDist = d;
+                    bestTowerScore = score;
                     var tw = t;
-                    best = new TargetInfo { pos = tw.Pos, radius = 24f, applyDamage = dmg => { DamageTower(tw, dmg, !u.IsEnemy); } };
+                    bestTower = new TargetInfo { pos = tw.Pos, radius = 24f, isTower = true, isMain = tw.IsMain, isEnemy = tw.IsEnemy, applyDamage = dmg => { DamageTower(tw, dmg, !u.IsEnemy); } };
                 }
             }
-            return best;
+
+            return bestTower ?? best;
+        }
+
+        private Vector2 GetMoveTarget(Unit u, TargetInfo target)
+        {
+            if (!target.isTower)
+                return target.pos;
+
+            float laneX = u.LaneX;
+            float bridgeY = _arenaRect.Center.Y;
+            float riverTop = bridgeY - 14f;
+            float riverBottom = bridgeY + 14f;
+            float approachY = u.IsEnemy ? riverTop - 18f : riverBottom + 18f;
+            float exitY = u.IsEnemy ? riverBottom + 18f : riverTop - 18f;
+
+            bool onMySide = u.IsEnemy ? u.Pos.Y < riverTop : u.Pos.Y > riverBottom;
+            bool onEnemySide = u.IsEnemy ? u.Pos.Y > riverBottom : u.Pos.Y < riverTop;
+
+            // Side towers: march up lane, cross bridge, then go to tower.
+            if (!target.isMain)
+            {
+                if (onMySide)
+                {
+                    if (Math.Abs(u.Pos.X - laneX) > 10f) return new Vector2(laneX, u.Pos.Y);
+                    return new Vector2(laneX, approachY);
+                }
+                if (!onEnemySide)
+                {
+                    // crossing river
+                    return new Vector2(laneX, exitY);
+                }
+                // on enemy side: go toward tower while keeping lane until close
+                if (Math.Abs(target.pos.X - laneX) < 40f || Math.Abs(u.Pos.Y - target.pos.Y) > 70f)
+                    return new Vector2(laneX, target.pos.Y);
+                return target.pos;
+            }
+
+            // King: go through nearest available lane bridge, then to king.
+            float left = _arenaRect.Left + _arenaRect.Width * 0.25f;
+            float right = _arenaRect.Left + _arenaRect.Width * 0.75f;
+            bool leftAlive = _towers.Any(t => t.Alive && t.IsEnemy == target.isEnemy && !t.IsMain && Math.Abs(t.Pos.X - left) < 10f);
+            bool rightAlive = _towers.Any(t => t.Alive && t.IsEnemy == target.isEnemy && !t.IsMain && Math.Abs(t.Pos.X - right) < 10f);
+            float kingLane = laneX;
+            if (leftAlive || rightAlive)
+            {
+                if (leftAlive && !rightAlive) kingLane = left;
+                else if (rightAlive && !leftAlive) kingLane = right;
+                else kingLane = Math.Abs(u.Pos.X - left) <= Math.Abs(u.Pos.X - right) ? left : right;
+            }
+
+            if (onMySide)
+            {
+                if (Math.Abs(u.Pos.X - kingLane) > 10f) return new Vector2(kingLane, u.Pos.Y);
+                return new Vector2(kingLane, approachY);
+            }
+            if (!onEnemySide) return new Vector2(kingLane, exitY);
+            return target.pos;
         }
 
         private void UpdateTowers(float dt)

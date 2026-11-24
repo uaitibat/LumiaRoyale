@@ -20,6 +20,18 @@ namespace LumiaRoyale.Game
         private Texture2D _punyWarriorTex;
         private Texture2D _punySoldierTex;
         private Texture2D _punyMageTex;
+        private Texture2D _punyArcherPurpleTex;
+        private Texture2D _punyMageRedTex;
+
+        // SE98 / Void theme palette (from ~/.themes/se98-wm-theme-main)
+        private static readonly Color Se98Face = new Color(212, 208, 200);      // #D4D0C8
+        private static readonly Color Se98Light = new Color(255, 255, 255);     // highlight
+        private static readonly Color Se98Shadow = new Color(148, 145, 140);    // dark shadow
+        private static readonly Color Se98Dark = new Color(90, 88, 84);
+        private static readonly Color Se98Selected = new Color(10, 36, 106);    // #0A246A
+        private static readonly Color Se98TitleA = new Color(161, 196, 233);    // #A1C4E9
+        private static readonly Color Se98TitleB = new Color(0, 0, 96);         // #000060
+        private static readonly Color Se98Text = new Color(0, 0, 0);
 
         private readonly List<Unit> _units = new List<Unit>();
         private readonly List<Tower> _towers = new List<Tower>();
@@ -97,6 +109,8 @@ namespace LumiaRoyale.Game
             _punyWarriorTex = LoadTex("Assets/Sprites/Puny/Warrior-Red.png");
             _punySoldierTex = LoadTex("Assets/Sprites/Puny/Soldier-Blue.png");
             _punyMageTex = LoadTex("Assets/Sprites/Puny/Mage-Cyan.png");
+            _punyArcherPurpleTex = LoadTex("Assets/Sprites/Puny/Archer-Purple.png");
+            _punyMageRedTex = LoadTex("Assets/Sprites/Puny/Mage-Red.png");
         }
 
         private Texture2D LoadTex(string relativePath)
@@ -1058,6 +1072,10 @@ namespace LumiaRoyale.Game
             DrawTowers();
             DrawUnits();
             DrawFx();
+            _spriteBatch.End();
+
+            // UI in pixel-perfect nearest-neighbor (SE98 / retro look)
+            _spriteBatch.Begin(samplerState: Microsoft.Xna.Framework.Graphics.SamplerState.PointSampler);
             DrawHud();
             DrawCards();
             DrawEndOverlay();
@@ -1451,59 +1469,64 @@ namespace LumiaRoyale.Game
         private void DrawHud()
         {
             int w = GraphicsDevice.Viewport.Width;
-            int hudH = 92;
-            DrawRect(new Rectangle(0, 0, w, hudH), new Color(12, 20, 30, 210));
-            DrawRect(new Rectangle(0, hudH - 2, w, 2), new Color(255, 255, 255, 35));
+            int hudH = 94;
 
-            // Timer + crowns panel
+            // Window face + sunken/sunlit bevel
+            DrawRect(new Rectangle(0, 0, w, hudH), Se98Face);
+            DrawRect(new Rectangle(0, hudH - 2, w, 2), Se98Shadow);
+            DrawRect(new Rectangle(0, 0, w, 1), Se98Light);
+            DrawRect(new Rectangle(0, hudH - 3, w, 1), Se98Light);
+
+            // Gradient title bar strip
+            int titleH = 18;
+            for (int x = 0; x < w; x += 2)
+            {
+                float t = x / (float)Math.Max(1, w - 1);
+                DrawRect(new Rectangle(x, 0, 2, titleH), Color.Lerp(Se98TitleA, Se98TitleB, t));
+            }
+            DrawPixelText("LUMIAROYALE - ARENA", 8, 6, 1, Color.White);
+
             int sec = Math.Max(0, (int)Math.Ceiling(_timeLeft));
-            var timeColor = sec <= 30 ? new Color(255, 110, 110) : new Color(245, 245, 245);
             string timeStr = (sec / 60) + ":" + (sec % 60).ToString("00");
-            DrawRect(new Rectangle(w / 2 - 54, 8, 108, 28), new Color(25, 35, 50, 180));
-            DrawRect(new Rectangle(w / 2 - 54, 8, 108, 28), new Color(255, 255, 255, 45), 1);
-            DrawPixelText(timeStr, w / 2 - 28, 14, 2, timeColor);
+            DrawBeveledPanel(new Rectangle(w / 2 - 52, 24, 104, 26), false);
+            DrawPixelText(timeStr, w / 2 - 24, 32, 2, sec <= 30 ? new Color(200, 30, 30) : Se98Text);
 
-            DrawRect(new Rectangle(w - 98, 8, 84, 28), new Color(40, 34, 20, 180));
-            DrawRect(new Rectangle(w - 98, 8, 84, 28), new Color(255, 220, 120, 80), 1);
-            DrawPixelText(_playerCrowns + "-" + _enemyCrowns, w - 74, 14, 2, new Color(255, 230, 140));
+            DrawBeveledPanel(new Rectangle(w - 96, 24, 88, 26), false);
+            DrawPixelText(_playerCrowns + "-" + _enemyCrowns, w - 72, 32, 2, Se98Text);
 
             if (_matchState == "playing")
             {
-                var pause = new Rectangle(w - 42, 44, 32, 32);
-                DrawRect(pause, new Color(45, 55, 70, 200));
-                DrawRect(pause, new Color(200, 210, 220, 120), 1);
-                DrawRect(new Rectangle(pause.X + 9, pause.Y + 8, 4, 16), Color.White);
-                DrawRect(new Rectangle(pause.X + 19, pause.Y + 8, 4, 16), Color.White);
+                var pause = new Rectangle(w - 42, 56, 32, 30);
+                DrawBeveledPanel(pause, true);
+                DrawRect(new Rectangle(pause.X + 9, pause.Y + 8, 4, 14), Se98Text);
+                DrawRect(new Rectangle(pause.X + 19, pause.Y + 8, 4, 14), Se98Text);
             }
 
-            // Mana bar
-            int barX = 14;
+            // Elixir / mana bar as a classic progress bar
+            int barX = 10;
             int barW = w - 64;
             int barY = 58;
-            int barH = 22;
+            int barH = 26;
             var bg = new Rectangle(barX, barY, barW, barH);
+            DrawBeveledPanel(bg, true);
+            var inner = new Rectangle(bg.X + 3, bg.Y + 3, bg.Width - 6, bg.Height - 6);
+            DrawRect(inner, new Color(255, 255, 255));
             float pct = _mana / ManaMax;
-            var fg = new Rectangle(barX, barY, (int)(barW * pct), barH);
-            DrawRect(bg, new Color(30, 28, 40));
-            DrawRect(fg, new Color(150, 85, 235));
-            DrawRect(new Rectangle(bg.X, bg.Y, fg.Width, 7), new Color(210, 170, 255, 80));
-            DrawRect(bg, new Color(210, 210, 225, 110), 1);
+            var fg = new Rectangle(inner.X, inner.Y, (int)(inner.Width * pct), inner.Height);
+            for (int i = 0; i < fg.Width; i += 4)
+            {
+                Color c = new Color(150 + (i % 8) * 6, 70 + (i % 8) * 4, 220 - (i % 8) * 6);
+                DrawRect(new Rectangle(inner.X + i, inner.Y, Math.Min(4, fg.Width - i), fg.Height), i < fg.Width ? c : Color.White);
+            }
             for (int i = 1; i < 10; i++)
             {
                 int x = bg.X + (int)(barW * (i / 10f));
-                DrawRect(new Rectangle(x, bg.Y, 1, bg.Height), new Color(255, 255, 255, 30));
+                DrawRect(new Rectangle(x, bg.Y + 3, 1, barH - 6), Se98Shadow);
             }
-            DrawPixelText(((int)_mana) + "/10", barX + 6, barY + 5, 2, new Color(240, 230, 255));
+            DrawPixelText(((int)_mana) + "/10", barX + 8, barY + 8, 2, Se98Text);
 
-            // Status
-            string msg = _statusTimer > 0 ? _status : (_selectedHand >= 0 ? "Toque na arena para posicionar" : "Escolha uma carta");
-            Color msgBg = _statusTimer > 0 ? new Color(20, 30, 45, 180) : new Color(0, 0, 0, 0);
-            int msgW = Math.Min(w - 20, msg.Length * 8 + 16);
-            if (_statusTimer > 0)
-            {
-                DrawRect(new Rectangle(10, 40, msgW, 16), msgBg);
-            }
-            DrawPixelText(msg.ToUpperInvariant(), 14, 42, 1, _statusTimer > 0 ? new Color(255, 245, 180) : new Color(190, 205, 220));
+            string msg = _statusTimer > 0 ? _status : (_selectedHand >= 0 ? "TOQUE NA ARENA" : "ESCOLHA UMA CARTA");
+            DrawPixelText(msg.ToUpperInvariant(), 10, 86, 1, Se98Text);
         }
 
         private void DrawCards()
@@ -1527,12 +1550,23 @@ namespace LumiaRoyale.Game
                 if (def == null) continue;
 
                 var art = new Rectangle(r.X + 6, r.Y + 6, r.Width - 12, r.Height - 42);
-                DrawRect(art, Color.Lerp(def.Color, Color.Black, 0.25f));
-                DrawRect(new Rectangle(art.X, art.Y, art.Width, 8), new Color(255, 255, 255, 30));
-                DrawRect(art, new Color(255, 255, 255, 25), 1);
+                DrawRect(art, Color.Lerp(def.Color, Color.Black, 0.35f));
+                DrawRect(new Rectangle(art.X, art.Y, art.Width, 10), new Color(255, 255, 255, 22));
+                DrawBeveledPanel(art, true);
 
-                var prev = new Rectangle(art.Center.X - 12, art.Center.Y - 10, 24, 24);
-                if (def.Kind == CardKind.Spell)
+                var prev = new Rectangle(art.Center.X - 16, art.Center.Y - 16, 32, 32);
+                Texture2D portraitTex = GetCardPortraitTexture(def);
+                if (portraitTex != null)
+                {
+                    // Puny sheets: 32x32 cells. Use a front-facing idle/attack frame as the card art.
+                    int col = 1;
+                    int row = def.Id == "pulso" ? 6 : (def.Id == "sentinela" ? 6 : 0);
+                    if (def.Id == "dardo" || def.Id == "eco") { col = 6; row = 0; }
+                    if (def.Id == "faisca") { col = 12; row = 0; }
+                    var src = new Rectangle(col * 32, row * 32, 32, 32);
+                    _spriteBatch.Draw(portraitTex, prev, src, canAfford ? Color.White : new Color(150, 150, 150));
+                }
+                else if (def.Kind == CardKind.Spell)
                 {
                     DrawRect(new Rectangle(prev.X - 2, prev.Y - 2, prev.Width + 4, prev.Height + 4), new Color(255, 255, 255, 20), 1);
                     DrawRect(new Rectangle(prev.Center.X - 6, prev.Center.Y - 6, 12, 12), def.Color);
@@ -1567,12 +1601,27 @@ namespace LumiaRoyale.Game
                 }
 
                 var costR = new Rectangle(r.X + 6, r.Bottom - 30, 30, 22);
-                DrawRect(costR, canAfford ? new Color(140, 70, 200) : new Color(90, 60, 110));
-                DrawRect(costR, new Color(230, 210, 255, 160), 1);
-                DrawPixelText(def.Cost.ToString(), costR.X + 9, costR.Y + 5, 2, Color.White);
+                DrawBeveledPanel(costR, false);
+                DrawPixelText(def.Cost.ToString(), costR.X + 9, costR.Y + 5, 2, Se98Text);
 
-                DrawMiniLabel(def.Name, r.X + 40, r.Bottom - 23, 4, canAfford ? new Color(235, 240, 245) : new Color(140, 145, 150));
-                if (!canAfford) DrawRect(r, new Color(0, 0, 0, 55));
+                var nameR = new Rectangle(r.X + 40, r.Bottom - 30, r.Width - 46, 22);
+                DrawBeveledPanel(nameR, true);
+                DrawPixelText(def.Name.ToUpperInvariant(), nameR.X + 4, nameR.Y + 6, 2, canAfford ? Se98Text : Se98Shadow);
+                if (!canAfford) DrawRect(r, new Color(0, 0, 0, 25));
+            }
+        }
+
+        private Texture2D GetCardPortraitTexture(CardDef def)
+        {
+            switch (def.Id)
+            {
+                case "sentinela": return _punySoldierTex;
+                case "dardo": return _punyArcherTex;
+                case "pulso": return _punyWarriorTex;
+                case "faisca": return _punyMageTex;
+                case "enxame": return _punyArcherPurpleTex;
+                case "eco": return _punyMageRedTex;
+                default: return null;
             }
         }
 
@@ -1679,55 +1728,82 @@ namespace LumiaRoyale.Game
             if (_matchState == "menu")
             {
                 var box = new Rectangle(vw / 2 - 170, vh / 2 - 105, 340, 210);
-                DrawRect(box, new Color(24, 50, 38, 245));
-                DrawRect(box, new Color(120, 200, 140, 180), 2);
-                DrawRect(new Rectangle(box.X + 2, box.Y + 2, box.Width - 4, 44), new Color(255, 255, 255, 18));
-                DrawPixelText("LUMIAROYALE", box.X + 68, box.Y + 22, 4, Color.White);
-                DrawPixelText("ARENA DE CARTAS", box.X + 88, box.Y + 66, 2, new Color(190, 230, 200));
+                DrawBeveledPanel(box, false);
+                for (int x = box.X + 2; x < box.Right - 2; x += 2)
+                    DrawRect(new Rectangle(x, box.Y + 2, 2, 26), Color.Lerp(Se98TitleA, Se98TitleB, (x - box.X) / (float)box.Width));
+                DrawPixelText("LUMIAROYALE", box.X + 66, box.Y + 8, 4, Color.White);
+                DrawPixelText("ARENA DE CARTAS", box.X + 88, box.Y + 44, 2, Se98Text);
 
-                var play = new Rectangle(box.X + 60, box.Y + 100, 220, 40);
-                DrawRect(play, new Color(80, 160, 90));
-                DrawRect(play, new Color(220, 255, 225, 180), 2);
-                DrawPixelText("TOQUE PARA JOGAR", play.X + 30, play.Y + 14, 2, Color.White);
-                DrawPixelText("DESTRUA A TORRE PRINCIPAL", box.X + 44, box.Y + 160, 2, new Color(170, 200, 175));
+                var play = new Rectangle(box.X + 60, box.Y + 80, 220, 42);
+                DrawBeveledButton(play, "TOQUE PARA JOGAR");
+                DrawPixelText("DESTRUA A TORRE PRINCIPAL", box.X + 48, box.Y + 148, 2, Se98Text);
+                DrawPixelText("V = VITORIA / D = DERROTA", box.X + 60, box.Y + 174, 2, Se98Shadow);
                 return;
             }
 
             if (_matchState == "paused")
             {
                 var box = new Rectangle(vw / 2 - 150, vh / 2 - 95, 300, 190);
-                DrawRect(box, new Color(30, 40, 52, 245));
-                DrawRect(box, new Color(180, 200, 220, 160), 2);
-                DrawPixelText("PAUSADO", box.X + 90, box.Y + 26, 4, Color.White);
+                DrawBeveledPanel(box, false);
+                for (int x = box.X + 2; x < box.Right - 2; x += 2)
+                    DrawRect(new Rectangle(x, box.Y + 2, 2, 26), Color.Lerp(Se98TitleA, Se98TitleB, (x - box.X) / (float)box.Width));
+                DrawPixelText("PAUSADO", box.X + 96, box.Y + 8, 4, Color.White);
 
-                var resume = new Rectangle(box.X + 40, box.Y + 78, 220, 38);
-                var restart = new Rectangle(box.X + 40, box.Y + 126, 220, 38);
-                DrawRect(resume, new Color(65, 130, 80)); DrawRect(resume, new Color(220, 255, 225, 160), 1);
-                DrawRect(restart, new Color(140, 70, 70)); DrawRect(restart, new Color(255, 220, 220, 140), 1);
-                DrawPixelText("RETOMAR", resume.X + 76, resume.Y + 13, 2, Color.White);
-                DrawPixelText("REINICIAR", restart.X + 68, restart.Y + 13, 2, Color.White);
+                var resume = new Rectangle(box.X + 40, box.Y + 60, 220, 38);
+                var restart = new Rectangle(box.X + 40, box.Y + 108, 220, 38);
+                DrawBeveledButton(resume, "RETOMAR");
+                DrawBeveledButton(restart, "REINICIAR");
                 return;
             }
 
             bool win = _matchState == "win";
             var ebox = new Rectangle(vw / 2 - 180, vh / 2 - 100, 360, 200);
-            Color c = win ? new Color(40, 110, 65, 245) : new Color(120, 45, 45, 245);
-            Color accent = win ? new Color(160, 255, 170) : new Color(255, 170, 170);
-            DrawRect(ebox, c);
-            DrawRect(ebox, accent * 0.7f, 2);
-            DrawRect(new Rectangle(ebox.X + 2, ebox.Y + 2, ebox.Width - 4, 48), new Color(255, 255, 255, 18));
+            DrawBeveledPanel(ebox, false);
+            for (int x = ebox.X + 2; x < ebox.Right - 2; x += 2)
+                DrawRect(new Rectangle(x, ebox.Y + 2, 2, 32), Color.Lerp(Se98TitleA, Se98TitleB, (x - ebox.X) / (float)ebox.Width));
 
             string title = win ? "VITORIA!" : "DERROTA";
-            DrawPixelText(title, ebox.X + (win ? 110 : 120), ebox.Y + 24, 4, Color.White);
-            DrawPixelText("COROAS " + _playerCrowns + " X " + _enemyCrowns, ebox.X + 100, ebox.Y + 74, 2, Color.White);
-            DrawPixelText("TORRES " + _enemyTowersLost + " X " + _playerTowersLost, ebox.X + 100, ebox.Y + 96, 2, new Color(235, 235, 235));
+            DrawPixelText(title, ebox.X + (win ? 122 : 132), ebox.Y + 10, 4, Color.White);
+            DrawPixelText("COROAS " + _playerCrowns + " X " + _enemyCrowns, ebox.X + 100, ebox.Y + 58, 2, Se98Text);
+            DrawPixelText("TORRES " + _enemyTowersLost + " X " + _playerTowersLost, ebox.X + 100, ebox.Y + 80, 2, Se98Text);
             int sec = Math.Max(0, (int)Math.Ceiling(_timeLeft));
-            DrawPixelText("TEMPO " + (sec / 60) + ":" + (sec % 60).ToString("00"), ebox.X + 124, ebox.Y + 118, 2, new Color(235, 235, 235));
+            DrawPixelText("TEMPO " + (sec / 60) + ":" + (sec % 60).ToString("00"), ebox.X + 124, ebox.Y + 102, 2, Se98Text);
 
-            var again = new Rectangle(ebox.X + 70, ebox.Y + 148, 220, 34);
-            DrawRect(again, Color.White * 0.12f);
-            DrawRect(again, Color.White * 0.5f, 1);
-            DrawPixelText("TOQUE PARA REINICIAR", again.X + 20, again.Y + 11, 2, Color.White);
+            var again = new Rectangle(ebox.X + 70, ebox.Y + 144, 220, 36);
+            DrawBeveledButton(again, "TOQUE PARA REINICIAR");
+        }
+
+        private void DrawBeveledPanel(Rectangle r, bool sunken)
+        {
+            if (sunken)
+            {
+                DrawRect(new Rectangle(r.X, r.Y, r.Width, 2), Se98Shadow);
+                DrawRect(new Rectangle(r.X, r.Y, 2, r.Height), Se98Shadow);
+                DrawRect(new Rectangle(r.X, r.Bottom - 2, r.Width, 2), Se98Light);
+                DrawRect(new Rectangle(r.Right - 2, r.Y, 2, r.Height), Se98Light);
+            }
+            else
+            {
+                DrawRect(new Rectangle(r.X, r.Y, r.Width, 2), Se98Light);
+                DrawRect(new Rectangle(r.X, r.Y, 2, r.Height), Se98Light);
+                DrawRect(new Rectangle(r.X, r.Bottom - 2, r.Width, 2), Se98Shadow);
+                DrawRect(new Rectangle(r.Right - 2, r.Y, 2, r.Height), Se98Shadow);
+                DrawRect(new Rectangle(r.X + 2, r.Y + 2, r.Width - 4, r.Height - 4), Se98Face);
+            }
+        }
+
+        private void DrawBeveledButton(Rectangle r, string label, bool active = false)
+        {
+            DrawBeveledPanel(r, false);
+            if (active)
+            {
+                DrawRect(new Rectangle(r.X + 2, r.Y + 2, r.Width - 4, r.Height - 4), Se98Selected);
+                DrawPixelText(label, r.Center.X - label.Length * 4, r.Center.Y - 4, 2, Color.White);
+            }
+            else
+            {
+                DrawPixelText(label, r.Center.X - label.Length * 4, r.Center.Y - 4, 2, Se98Text);
+            }
         }
 
         private void DrawRect(Rectangle r, Color c)

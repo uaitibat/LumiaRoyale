@@ -31,14 +31,16 @@ namespace LumiaRoyale.Game
 
         private float _enemyMana;
         private float _enemySpawnTimer;
-        private string _status = "Toque numa carta e depois na sua metade da arena";
-        private string _matchState = ""; // "", "win", "lose"
+        private string _status = "Toque numa carta e depois na sua metade";
+        private string _matchState = ""; // "menu", "playing", "win", "lose"
 
         private Rectangle _arenaRect;
         private float _statusTimer;
         private float _timeLeft = 180f;
         private int _playerCrowns;
         private int _enemyCrowns;
+        private int _playerTowersLost;
+        private int _enemyTowersLost;
 
         private struct Fx
         {
@@ -76,6 +78,8 @@ namespace LumiaRoyale.Game
             TouchPanel.EnabledGestures = GestureType.Tap;
             base.Initialize();
             ResetMatch();
+            _matchState = "menu";
+            _status = "Toque para jogar";
         }
 
         protected override void LoadContent()
@@ -100,11 +104,13 @@ namespace LumiaRoyale.Game
             _enemySpawnTimer = 2f;
             _selectedHand = -1;
             _status = "Toque numa carta e depois na sua metade";
-            _matchState = "";
+            _matchState = "playing";
             _statusTimer = 3f;
             _timeLeft = 180f;
             _playerCrowns = 0;
             _enemyCrowns = 0;
+            _playerTowersLost = 0;
+            _enemyTowersLost = 0;
 
             int w = GraphicsDevice.Viewport.Width;
             int h = GraphicsDevice.Viewport.Height;
@@ -136,7 +142,7 @@ namespace LumiaRoyale.Game
             UpdateFx(dt);
             if (_statusTimer > 0) _statusTimer -= dt;
 
-            if (_matchState != "") { base.Update(gameTime); return; }
+            if (_matchState != "playing") { base.Update(gameTime); return; }
 
             _timeLeft -= dt;
             if (_timeLeft <= 0f) { _timeLeft = 0f; EndByCrowns(); base.Update(gameTime); return; }
@@ -208,7 +214,8 @@ namespace LumiaRoyale.Game
 
         private void AwardCrown(bool enemyTowerDestroyed)
         {
-            if (enemyTowerDestroyed) _playerCrowns++; else _enemyCrowns++;
+            if (enemyTowerDestroyed) { _playerCrowns++; _enemyTowersLost++; }
+            else { _enemyCrowns++; _playerTowersLost++; }
         }
 
         private void HandleInput()
@@ -219,7 +226,11 @@ namespace LumiaRoyale.Game
                 if (g.GestureType != GestureType.Tap) continue;
                 var p = g.Position;
 
-                if (_matchState != "") { ResetMatch(); return; }
+                if (_matchState == "menu" || _matchState == "win" || _matchState == "lose")
+                {
+                    ResetMatch();
+                    return;
+                }
 
                 var cardRects = GetCardRects();
                 for (int i = 0; i < 4; i++)
@@ -286,8 +297,21 @@ namespace LumiaRoyale.Game
                 return;
             }
             float laneX = GetLaneX(pos.X);
-            _units.Add(new Unit(card, pos, enemy, laneX));
-            AddFx(pos, card.Color, card.Kind == CardKind.Building ? 18f : 14f, 0.28f, "spawn");
+            int count = Math.Max(1, card.SpawnCount);
+            for (int i = 0; i < count; i++)
+            {
+                Vector2 spawnPos = pos;
+                if (count > 1)
+                {
+                    float ang = MathHelper.TwoPi * i / count;
+                    float r = 14f + (i % 2) * 4f;
+                    spawnPos += new Vector2((float)Math.Cos(ang), (float)Math.Sin(ang)) * r;
+                    spawnPos.X = MathHelper.Clamp(spawnPos.X, _arenaRect.Left + 15, _arenaRect.Right - 15);
+                    spawnPos.Y = MathHelper.Clamp(spawnPos.Y, _arenaRect.Top + 15, _arenaRect.Bottom - 15);
+                }
+                _units.Add(new Unit(card, spawnPos, enemy, laneX));
+                AddFx(spawnPos, card.Color, card.Kind == CardKind.Building ? 18f : (count > 1 ? 10f : 14f), 0.22f, "spawn");
+            }
         }
 
         private float GetLaneX(float x)
@@ -362,10 +386,17 @@ namespace LumiaRoyale.Game
             {
                 Vector2 threatCenter = AveragePos(threats);
                 int nearCount = CountNear(playerUnits, threatCenter, 90f);
+                bool hasColossusThreat = threats.Any(u => u.Def.Id == "pulso");
 
                 var building = affordable.FirstOrDefault(c => c.Kind == CardKind.Building);
-                if (building != null && nearCount >= 1 && !enemyUnits.Any(u => u.IsBuilding && Vector2.Distance(u.Pos, threatCenter) < 140f))
+                if (building != null && (nearCount >= 1 || hasColossusThreat) && !enemyUnits.Any(u => u.IsBuilding && Vector2.Distance(u.Pos, threatCenter) < 140f))
                     return building;
+
+                if (hasColossusThreat)
+                {
+                    var swarm = affordable.FirstOrDefault(c => c.Id == "enxame");
+                    if (swarm != null) return swarm;
+                }
 
                 if (nearCount >= 2)
                 {
@@ -931,7 +962,7 @@ namespace LumiaRoyale.Game
 
         private void DrawDeployHint()
         {
-            if (_selectedHand < 0 || _matchState != "") return;
+            if (_selectedHand < 0 || _matchState != "playing") return;
             var card = _hand[_selectedHand];
             if (card.Kind == CardKind.Spell)
             {
@@ -988,12 +1019,30 @@ namespace LumiaRoyale.Game
                 }
 
                 if (u.Def.Id == "pulso") DrawColossus(u, team, dark);
+                else if (u.Def.Id == "enxame") DrawSwarm(u, team, dark);
                 else if (u.Def.Kind == CardKind.Ranged) DrawRanged(u, team, dark);
                 else DrawMelee(u, team, dark);
 
-                int hpW = u.Def.Id == "pulso" ? 30 : 22;
-                DrawHpBar((int)u.Pos.X - hpW / 2, (int)u.Pos.Y - (u.Def.Id == "pulso" ? 28 : 16), hpW, 4, u.Hp, u.MaxHp);
+                int hpW = u.Def.Id == "pulso" ? 30 : (u.Def.Id == "enxame" ? 14 : 22);
+                int hpY = u.Def.Id == "pulso" ? 28 : (u.Def.Id == "enxame" ? 12 : 16);
+                DrawHpBar((int)u.Pos.X - hpW / 2, (int)u.Pos.Y - hpY, hpW, 3, u.Hp, u.MaxHp);
             }
+        }
+
+        private void DrawSwarm(Unit u, Color team, Color dark)
+        {
+            float bob = (float)Math.Sin(u.WalkPhase * 3f) * 1f;
+            int x = (int)u.Pos.X;
+            int y = (int)(u.Pos.Y + bob);
+            var body = new Rectangle(x - 5, y - 4, 10, 10);
+            DrawRect(new Rectangle(body.X + 1, body.Bottom, body.Width - 1, 3), new Color(0, 0, 0, 45));
+            DrawRect(body, u.Def.Color);
+            DrawRect(body, dark, 1);
+            DrawRect(new Rectangle(x - 3, y - 7, 6, 4), Color.Lerp(u.Def.Color, Color.White, 0.2f));
+            DrawRect(new Rectangle(x - 4, y, 8, 2), team);
+            int dir = u.Facing.X >= 0 ? 1 : -1;
+            DrawRect(new Rectangle(x + dir * 4, y - 2, 2, 6), new Color(230, 230, 240));
+            if (u.HitFlash > 0) DrawRect(body, new Color(255, 255, 255, 120));
         }
 
         private void DrawBuildingUnit(Unit u, Color team, Color dark)
@@ -1132,7 +1181,8 @@ namespace LumiaRoyale.Game
             DrawStatusText(msg, 14, 12, 7, Color.White);
             DrawStatusText(((int)_mana).ToString() + "/10", 14, 28, 6, new Color(230, 210, 255));
             int sec = Math.Max(0, (int)Math.Ceiling(_timeLeft));
-            DrawStatusText((sec / 60) + ":" + (sec % 60).ToString("00"), GraphicsDevice.Viewport.Width / 2 - 24, 12, 6, Color.White);
+            var timeColor = sec <= 30 ? new Color(255, 120, 120) : Color.White;
+            DrawStatusText((sec / 60) + ":" + (sec % 60).ToString("00"), GraphicsDevice.Viewport.Width / 2 - 24, 12, 6, timeColor);
             DrawStatusText(_playerCrowns + "x" + _enemyCrowns, GraphicsDevice.Viewport.Width - 52, 12, 6, new Color(255, 230, 140));
         }
 
@@ -1166,6 +1216,16 @@ namespace LumiaRoyale.Game
                     DrawRect(prev, new Color(150, 155, 165));
                     DrawRect(new Rectangle(prev.X + 4, prev.Y + 4, prev.Width - 8, 6), def.Color);
                     DrawRect(prev, Color.White * 0.7f, 1);
+                }
+                else if (def.SpawnCount > 1)
+                {
+                    for (int k = 0; k < 4; k++)
+                    {
+                        int px = prev.X + 2 + (k % 2) * 9;
+                        int py = prev.Y + 2 + (k / 2) * 9;
+                        DrawRect(new Rectangle(px, py, 6, 6), def.Color);
+                        DrawRect(new Rectangle(px, py, 6, 6), Color.White * 0.5f, 1);
+                    }
                 }
                 else
                 {
@@ -1277,15 +1337,32 @@ namespace LumiaRoyale.Game
 
         private void DrawEndOverlay()
         {
-            if (_matchState == "") return;
-            DrawRect(new Rectangle(0, 0, GraphicsDevice.Viewport.Width, GraphicsDevice.Viewport.Height), new Color(0, 0, 0, 130));
-            var box = new Rectangle(GraphicsDevice.Viewport.Width / 2 - 150, GraphicsDevice.Viewport.Height / 2 - 56, 300, 112);
+            if (_matchState == "playing") return;
+            DrawRect(new Rectangle(0, 0, GraphicsDevice.Viewport.Width, GraphicsDevice.Viewport.Height), new Color(0, 0, 0, 140));
+
+            if (_matchState == "menu")
+            {
+                var box = new Rectangle(GraphicsDevice.Viewport.Width / 2 - 160, GraphicsDevice.Viewport.Height / 2 - 90, 320, 180);
+                DrawRect(box, new Color(30, 60, 45));
+                DrawRect(box, new Color(200, 220, 200), 2);
+                DrawPixelText("LUMIAROYALE", box.X + 56, box.Y + 28, 4, Color.White);
+                DrawPixelText("ARENA DE CARTAS", box.X + 72, box.Y + 66, 2, new Color(200, 230, 200));
+                DrawPixelText("TOQUE PARA JOGAR", box.X + 68, box.Y + 110, 2, new Color(255, 230, 140));
+                DrawPixelText("DESTRUA A TORRE PRINCIPAL", box.X + 34, box.Y + 140, 2, new Color(180, 200, 180));
+                return;
+            }
+
+            var ebox = new Rectangle(GraphicsDevice.Viewport.Width / 2 - 170, GraphicsDevice.Viewport.Height / 2 - 80, 340, 170);
             Color c = _matchState == "win" ? new Color(60, 140, 80) : new Color(150, 60, 60);
-            DrawRect(box, c);
-            DrawRect(box, Color.White, 2);
+            DrawRect(ebox, c);
+            DrawRect(ebox, Color.White, 2);
             string title = _matchState == "win" ? "VITORIA!" : "DERROTA";
-            DrawPixelText(title, box.X + 70, box.Y + 24, 4, Color.White);
-            DrawPixelText("TOQUE PARA REINICIAR", box.X + 34, box.Y + 72, 2, Color.White * 0.9f);
+            DrawPixelText(title, ebox.X + 90, ebox.Y + 22, 4, Color.White);
+            DrawPixelText("COROAS " + _playerCrowns + " X " + _enemyCrowns, ebox.X + 86, ebox.Y + 64, 2, Color.White);
+            DrawPixelText("TORRES " + _enemyTowersLost + " X " + _playerTowersLost, ebox.X + 86, ebox.Y + 86, 2, new Color(230, 230, 230));
+            int sec = Math.Max(0, (int)Math.Ceiling(_timeLeft));
+            DrawPixelText("TEMPO " + (sec / 60) + ":" + (sec % 60).ToString("00"), ebox.X + 110, ebox.Y + 108, 2, new Color(230, 230, 230));
+            DrawPixelText("TOQUE PARA REINICIAR", ebox.X + 62, ebox.Y + 136, 2, Color.White * 0.9f);
         }
 
         private void DrawRect(Rectangle r, Color c)

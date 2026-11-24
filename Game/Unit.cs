@@ -39,6 +39,7 @@ namespace LumiaRoyale.Game
         {
             if (IsBuilding) return 14f;
             if (Def.Id == "pulso") return 16f;
+            if (Def.Id == "enxame") return 7f;
             return Def.Kind == CardKind.Melee ? 11f : 9f;
         }
     }

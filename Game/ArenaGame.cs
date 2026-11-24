@@ -16,6 +16,10 @@ namespace LumiaRoyale.Game
         private SpriteBatch _spriteBatch;
         private Texture2D _pixel;
         private Texture2D _archerBackTex;
+        private Texture2D _punyArcherTex;
+        private Texture2D _punyWarriorTex;
+        private Texture2D _punySoldierTex;
+        private Texture2D _punyMageTex;
 
         private readonly List<Unit> _units = new List<Unit>();
         private readonly List<Tower> _towers = new List<Tower>();
@@ -88,22 +92,29 @@ namespace LumiaRoyale.Game
             _spriteBatch = new SpriteBatch(GraphicsDevice);
             _pixel = new Texture2D(GraphicsDevice, 1, 1);
             _pixel.SetData(new[] { Color.White });
+            _archerBackTex = LoadTex("Assets/Sprites/arqueira_back.png");
+            _punyArcherTex = LoadTex("Assets/Sprites/Puny/Archer-Green.png");
+            _punyWarriorTex = LoadTex("Assets/Sprites/Puny/Warrior-Red.png");
+            _punySoldierTex = LoadTex("Assets/Sprites/Puny/Soldier-Blue.png");
+            _punyMageTex = LoadTex("Assets/Sprites/Puny/Mage-Cyan.png");
+        }
+
+        private Texture2D LoadTex(string relativePath)
+        {
             try
             {
                 var installed = Windows.ApplicationModel.Package.Current.InstalledLocation.Path;
-                var path = System.IO.Path.Combine(installed, "Assets", "Sprites", "arqueira_back.png");
+                var path = System.IO.Path.Combine(installed, relativePath.Replace('/', System.IO.Path.DirectorySeparatorChar));
                 using (var s = System.IO.File.OpenRead(path))
-                    _archerBackTex = Texture2D.FromStream(GraphicsDevice, s);
+                    return Texture2D.FromStream(GraphicsDevice, s);
             }
-            catch
+            catch { }
+            try
             {
-                try
-                {
-                    using (var s = TitleContainer.OpenStream("Assets/Sprites/arqueira_back.png"))
-                        _archerBackTex = Texture2D.FromStream(GraphicsDevice, s);
-                }
-                catch { _archerBackTex = null; }
+                using (var s = TitleContainer.OpenStream(relativePath))
+                    return Texture2D.FromStream(GraphicsDevice, s);
             }
+            catch { return null; }
         }
 
         private void ResetMatch()
@@ -1176,6 +1187,7 @@ namespace LumiaRoyale.Game
                 else if (u.Def.Id == "enxame") DrawSwarm(u, team, dark);
                 else if (u.Def.Id == "eco") DrawEco(u, team, dark);
                 else if (u.Def.Kind == CardKind.Ranged && u.Def.Id == "dardo") DrawArcher(u, team, dark);
+                else if (u.Def.Kind == CardKind.Ranged && u.Def.Id == "faisca") DrawPunyMage(u, team, dark);
                 else if (u.Def.Kind == CardKind.Ranged) DrawRanged(u, team, dark);
                 else DrawMelee(u, team, dark);
 
@@ -1244,6 +1256,15 @@ namespace LumiaRoyale.Game
 
         private void DrawMelee(Unit u, Color team, Color dark)
         {
+            Texture2D tex = u.Def.Id == "sentinela" ? _punySoldierTex : (_punyWarriorTex ?? _punySoldierTex);
+            if (tex != null && u.Def.Id != "pulso")
+            {
+                int anim = u.AttackAnim > 0 ? 2 : 1;
+                if (u.Def.Speed <= 0.01f) anim = u.AttackAnim > 0 ? 2 : 0;
+                DrawPunySprite(u, tex, anim, 3, 6f, team);
+                return;
+            }
+
             float bob = (float)Math.Sin(u.WalkPhase * 2f) * 1.5f;
             int x = (int)u.Pos.X;
             int y = (int)(u.Pos.Y + bob);
@@ -1253,17 +1274,26 @@ namespace LumiaRoyale.Game
             DrawRect(body, u.Def.Color);
             DrawRect(body, dark, 2);
             DrawRect(new Rectangle(body.X + 3, body.Y + 3, body.Width - 6, 5), new Color(255, 255, 255, 45));
-            // head
             DrawRect(new Rectangle(x - 5, body.Y - 6, 10, 7), Color.Lerp(u.Def.Color, Color.White, 0.15f));
             DrawRect(new Rectangle(x - 5, body.Y - 6, 10, 7), dark, 1);
-            // team band
             DrawRect(new Rectangle(x - 6, body.Y + 2, 12, 3), team);
-            // weapon
             int dir = u.Facing.X >= 0 ? 1 : -1;
             int swing = u.AttackAnim > 0 ? 3 : 0;
             DrawRect(new Rectangle(x + dir * 8, y - 8 - swing, 3, 14), new Color(230, 230, 240));
             DrawRect(new Rectangle(x + dir * 7, y - 10 - swing, 5, 3), new Color(200, 200, 210));
             if (u.HitFlash > 0) DrawRect(body, new Color(255, 255, 255, 110));
+        }
+
+        private void DrawPunyMage(Unit u, Color team, Color dark)
+        {
+            if (_punyMageTex != null)
+            {
+                int anim = u.AttackAnim > 0 ? 2 : 1;
+                if (u.Def.Speed <= 0.01f) anim = u.AttackAnim > 0 ? 2 : 0;
+                DrawPunySprite(u, _punyMageTex, anim, 3, 6f, team);
+                return;
+            }
+            DrawRanged(u, team, dark);
         }
 
         private void DrawRanged(Unit u, Color team, Color dark)
@@ -1287,8 +1317,67 @@ namespace LumiaRoyale.Game
             if (u.HitFlash > 0) DrawRect(body, new Color(255, 255, 255, 110));
         }
 
+        private void DrawPunySprite(Unit u, Texture2D tex, int animGroup, int frames, float fps, Color team)
+        {
+            // Puny Characters: 768x256, 32x32 cells. 24 cols = 8 groups * 3 frames, 8 rows = directions.
+            // Row mapping assumed: 0=S,1=SW,2=W,3=NW,4=N,5=NE,6=E,7=SE (common Puny layout).
+            if (tex == null) { DrawRanged(u, team, team); return; }
+
+            Vector2 f = u.Facing;
+            if (f.LengthSquared() < 0.001f) f = u.IsEnemy ? new Vector2(0, 1) : new Vector2(0, -1);
+            f.Normalize();
+            int dirRow = PunyDirRow(f);
+            float t = animGroup == 1 ? u.WalkPhase * 0.9f : (animGroup == 2 ? (1f - u.AttackAnim * 3f) : 0f);
+            int frame = Math.Abs((int)Math.Floor(t * fps)) % Math.Max(1, frames);
+            int col = animGroup * 3 + frame;
+            var src = new Rectangle(col * 32, dirRow * 32, 32, 32);
+
+            float bob = animGroup == 1 ? (float)Math.Sin(u.WalkPhase) * 1.2f : 0f;
+            int size = u.Def.Id == "pulso" ? 36 : 28;
+            var dst = new Rectangle((int)(u.Pos.X - size / 2f), (int)(u.Pos.Y - size / 2f + bob - 2), size, size);
+            DrawRect(new Rectangle(dst.X + 5, dst.Bottom - 4, dst.Width - 10, 3), new Color(0, 0, 0, 45));
+
+            Color tint = Color.Lerp(Color.White, team, 0.08f);
+            if (u.HitFlash > 0) tint = Color.Lerp(tint, Color.White, 0.75f);
+            _spriteBatch.Draw(tex, dst, src, tint);
+        }
+
+        private static int PunyDirRow(Vector2 f)
+        {
+            // 8 directions: angle 0 = +X (east), CCW positive in math, but screen Y down.
+            float ang = (float)Math.Atan2(f.Y, f.X); // -PI..PI
+            float deg = MathHelper.ToDegrees(ang);
+            if (deg < 0) deg += 360f;
+            // sectors centered at E(0), SE(45), S(90), SW(135), W(180), NW(225), N(270), NE(315)
+            int idx = (int)Math.Floor((deg + 22.5f) / 45f) % 8;
+            // idx: 0=E,1=SE,2=S,3=SW,4=W,5=NW,6=N,7=NE
+            switch (idx)
+            {
+                case 2: return 0; // S
+                case 3: return 1; // SW
+                case 4: return 2; // W
+                case 5: return 3; // NW
+                case 6: return 4; // N
+                case 7: return 5; // NE
+                case 0: return 6; // E
+                case 1: return 7; // SE
+                default: return 0;
+            }
+        }
+
         private void DrawArcher(Unit u, Color team, Color dark)
         {
+            // Use Puny Archer if available; anim groups: 0 idle,1 walk,2 bow attack,3 bow? varies - use 1 for walk, 2 for attack, 0 idle
+            if (_punyArcherTex != null)
+            {
+                int anim = u.AttackAnim > 0 ? 2 : (u.Facing.LengthSquared() > 0.001f && Math.Abs((float)Math.Sin(u.WalkPhase)) > 0.01f ? 1 : 0);
+                // When moving (speed>0) use walk, when attacking use attack, else idle
+                anim = u.AttackAnim > 0 ? 2 : 1; // most units are moving or attacking; idle rare
+                if (u.Def.Speed <= 0.01f) anim = u.AttackAnim > 0 ? 2 : 0;
+                DrawPunySprite(u, _punyArcherTex, anim, 3, 6f, team);
+                return;
+            }
+
             if (_archerBackTex != null)
             {
                 float bob = (float)Math.Sin(u.WalkPhase) * 1.2f;

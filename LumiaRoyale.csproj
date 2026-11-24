@@ -97,6 +97,10 @@
     <Content Include="Assets\StoreLogo.png" />
     <Content Include="Assets\Wide310x150Logo.scale-200.png" />
     <Content Include="Assets\Sprites\arqueira_back.png" />
+    <Content Include="Assets\Sprites\Puny\Archer-Green.png" />
+    <Content Include="Assets\Sprites\Puny\Soldier-Blue.png" />
+    <Content Include="Assets\Sprites\Puny\Warrior-Red.png" />
+    <Content Include="Assets\Sprites\Puny\Mage-Cyan.png" />
   </ItemGroup>
   <ItemGroup>
     <ApplicationDefinition Include="App.xaml"><Generator>MSBuild:Compile</Generator><SubType>Designer</SubType></ApplicationDefinition>

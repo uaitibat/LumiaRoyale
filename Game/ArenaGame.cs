@@ -35,6 +35,9 @@ namespace LumiaRoyale.Game
 
         private Rectangle _arenaRect;
         private float _statusTimer;
+        private float _timeLeft = 180f;
+        private int _playerCrowns;
+        private int _enemyCrowns;
 
         private struct Fx
         {
@@ -97,6 +100,9 @@ namespace LumiaRoyale.Game
             _status = "Toque numa carta e depois na sua metade";
             _matchState = "";
             _statusTimer = 3f;
+            _timeLeft = 180f;
+            _playerCrowns = 0;
+            _enemyCrowns = 0;
 
             int w = GraphicsDevice.Viewport.Width;
             int h = GraphicsDevice.Viewport.Height;
@@ -126,6 +132,9 @@ namespace LumiaRoyale.Game
 
             if (_matchState != "") { base.Update(gameTime); return; }
 
+            _timeLeft -= dt;
+            if (_timeLeft <= 0f) { _timeLeft = 0f; EndByCrowns(); base.Update(gameTime); return; }
+
             _mana = Math.Min(ManaMax, _mana + dt * 0.55f);
             _enemyMana = Math.Min(ManaMax, _enemyMana + dt * 0.55f);
 
@@ -137,11 +146,25 @@ namespace LumiaRoyale.Game
             {
                 if (_units[i].Alive) continue;
                 var u = _units[i];
-                AddFx(u.Pos, u.IsEnemy ? new Color(255, 120, 120) : new Color(120, 190, 255), 18f, 0.35f, "death");
+                AddFx(u.Pos, u.IsEnemy ? new Color(255, 120, 120) : new Color(120, 190, 255), u.IsBuilding ? 24f : 18f, 0.35f, "death");
                 _units.RemoveAt(i);
             }
             CheckEnd();
             base.Update(gameTime);
+        }
+
+        private void EndByCrowns()
+        {
+            if (_playerCrowns > _enemyCrowns) { _matchState = "win"; _status = "Vitoria por coroas!"; }
+            else if (_enemyCrowns > _playerCrowns) { _matchState = "lose"; _status = "Derrota por coroas"; }
+            else
+            {
+                int p = _towers.Where(t => !t.IsEnemy && t.Alive).Sum(t => t.Hp);
+                int e = _towers.Where(t => t.IsEnemy && t.Alive).Sum(t => t.Hp);
+                if (p > e) { _matchState = "win"; _status = "Vitoria por vida!"; }
+                else if (e > p) { _matchState = "lose"; _status = "Derrota por vida"; }
+                else { _matchState = "lose"; _status = "Empate - reinicie"; }
+            }
         }
 
         private void UpdateFx(float dt)
@@ -171,6 +194,11 @@ namespace LumiaRoyale.Game
             else if (!enemyMain) { _matchState = "win"; _status = "Vitoria! Toque para reiniciar"; }
         }
 
+        private void AwardCrown(bool enemyTowerDestroyed)
+        {
+            if (enemyTowerDestroyed) _playerCrowns++; else _enemyCrowns++;
+        }
+
         private void HandleInput()
         {
             while (TouchPanel.IsGestureAvailable)
@@ -196,13 +224,12 @@ namespace LumiaRoyale.Game
                 if (_selectedHand >= 0)
                 {
                     var card = _hand[_selectedHand];
-                    var midY = _arenaRect.Center.Y + 20;
-                    if (p.Y < midY) { _status = "Jogue na sua metade"; _statusTimer = 1.5f; return; }
+                    var pos = new Vector2(p.X, p.Y);
                     if (!_arenaRect.Contains((int)p.X, (int)p.Y)) return;
+                    if (!IsValidDeploy(card, pos, false)) { _status = "Posicao invalida"; _statusTimer = 1.5f; return; }
                     if (_mana < card.Cost) { _status = "Mana insuficiente"; _statusTimer = 1.5f; return; }
 
-                    SpawnUnit(card, new Vector2(p.X, p.Y), false);
-                    AddFx(new Vector2(p.X, p.Y), card.Color, 14f, 0.28f, "spawn");
+                    PlayCard(card, pos, false);
                     _mana -= card.Cost;
                     DrawCard(_selectedHand);
                     _selectedHand = -1;
@@ -229,26 +256,83 @@ namespace LumiaRoyale.Game
             _nextDraw = (_nextDraw + 1) % _deck.Length;
         }
 
-        private void SpawnUnit(CardDef def, Vector2 pos, bool enemy)
+        private bool IsValidDeploy(CardDef card, Vector2 pos, bool enemy)
+        {
+            int midY = _arenaRect.Center.Y + 20;
+            if (card.Kind == CardKind.Spell) return _arenaRect.Contains((int)pos.X, (int)pos.Y);
+            if (enemy) return pos.Y <= midY;
+            return pos.Y >= midY;
+        }
+
+        private void PlayCard(CardDef card, Vector2 pos, bool enemy)
         {
             pos.X = MathHelper.Clamp(pos.X, _arenaRect.Left + 15, _arenaRect.Right - 15);
             pos.Y = MathHelper.Clamp(pos.Y, _arenaRect.Top + 15, _arenaRect.Bottom - 15);
-            _units.Add(new Unit(def, pos, enemy));
+            if (card.Kind == CardKind.Spell)
+            {
+                CastSpell(card, pos, enemy);
+                return;
+            }
+            _units.Add(new Unit(card, pos, enemy));
+            AddFx(pos, card.Color, card.Kind == CardKind.Building ? 18f : 14f, 0.28f, "spawn");
+        }
+
+        private void CastSpell(CardDef card, Vector2 pos, bool enemy)
+        {
+            AddFx(pos, card.Color, card.AreaRadius, 0.35f, "hit");
+            AddFx(pos, Color.White, card.AreaRadius * 0.5f, 0.2f, "spawn");
+            foreach (var u in _units)
+            {
+                if (!u.Alive || u.IsEnemy == enemy) continue;
+                if (Vector2.Distance(u.Pos, pos) <= card.AreaRadius + u.Radius) { u.Hp -= card.Damage; u.HitFlash = 0.15f; }
+            }
+            foreach (var t in _towers)
+            {
+                if (!t.Alive || t.IsEnemy == enemy) continue;
+                if (Vector2.Distance(t.Pos, pos) <= card.AreaRadius + 26f)
+                {
+                    t.Hp -= card.Damage;
+                    t.HitFlash = 0.15f;
+                    if (t.IsMain) t.Awake = true;
+                }
+            }
+        }
+
+        private void SpawnUnit(CardDef def, Vector2 pos, bool enemy)
+        {
+            PlayCard(def, pos, enemy);
         }
 
         private void UpdateEnemy(float dt)
         {
             _enemySpawnTimer -= dt;
             if (_enemySpawnTimer > 0) return;
-            _enemySpawnTimer = 2.5f + (float)_rng.NextDouble() * 2.0f;
+            _enemySpawnTimer = 2.2f + (float)_rng.NextDouble() * 2.2f;
 
             var affordable = _deck.Where(c => c.Cost <= _enemyMana).ToList();
             if (affordable.Count == 0) return;
             var card = affordable[_rng.Next(affordable.Count)];
             _enemyMana -= card.Cost;
-            float x = _arenaRect.Left + 40 + (float)_rng.NextDouble() * (_arenaRect.Width - 80);
-            float y = _arenaRect.Top + 80 + (float)_rng.NextDouble() * (_arenaRect.Height * 0.25f);
-            SpawnUnit(card, new Vector2(x, y), true);
+
+            Vector2 pos;
+            if (card.Kind == CardKind.Spell)
+            {
+                // target cluster of player units or a tower
+                var targets = _units.Where(u => !u.IsEnemy && u.Alive).ToList();
+                if (targets.Count > 0) pos = targets[_rng.Next(targets.Count)].Pos;
+                else
+                {
+                    var tower = _towers.Where(t => !t.IsEnemy && t.Alive).OrderBy(t => t.IsMain ? 1 : 0).FirstOrDefault();
+                    pos = tower != null ? tower.Pos : new Vector2(_arenaRect.Center.X, _arenaRect.Bottom - 120);
+                }
+            }
+            else
+            {
+                float x = _arenaRect.Left + 40 + (float)_rng.NextDouble() * (_arenaRect.Width - 80);
+                float y = _arenaRect.Top + 80 + (float)_rng.NextDouble() * (_arenaRect.Height * 0.25f);
+                pos = new Vector2(x, y);
+            }
+            SpawnUnit(card, pos, true);
         }
 
         private void UpdateUnits(float dt)
@@ -256,6 +340,7 @@ namespace LumiaRoyale.Game
             foreach (var u in _units)
             {
                 if (!u.Alive) continue;
+                if (u.IsBuilding) { u.LifeLeft -= dt; }
                 u.AttackTimer -= dt;
                 var target = FindTarget(u);
                 if (target == null) continue;
@@ -270,7 +355,7 @@ namespace LumiaRoyale.Game
                         u.AttackTimer = u.Def.AttackCooldown;
                     }
                 }
-                else
+                else if (!u.IsBuilding)
                 {
                     var dir = target.Value.pos - u.Pos;
                     if (dir.LengthSquared() > 1f)
@@ -314,7 +399,7 @@ namespace LumiaRoyale.Game
                 {
                     bestDist = d;
                     var tw = t;
-                    best = new TargetInfo { pos = tw.Pos, radius = 24f, applyDamage = dmg => { tw.Hp -= dmg; tw.HitFlash = 0.12f; } };
+                    best = new TargetInfo { pos = tw.Pos, radius = 24f, applyDamage = dmg => { DamageTower(tw, dmg, !u.IsEnemy); } };
                 }
             }
             return best;
@@ -326,6 +411,7 @@ namespace LumiaRoyale.Game
             {
                 if (!t.Alive) continue;
                 t.CooldownLeft -= dt;
+                if (!t.Awake) continue;
                 if (t.CooldownLeft > 0) continue;
                 Unit target = null;
                 float best = float.MaxValue;
@@ -342,6 +428,22 @@ namespace LumiaRoyale.Game
                     AddFx(Vector2.Lerp(t.Pos, target.Pos, 0.7f), new Color(255, 240, 160), 7f, 0.12f, "hit");
                     t.CooldownLeft = t.Cooldown;
                 }
+            }
+        }
+
+        private void DamageTower(Tower t, int dmg, bool byPlayer)
+        {
+            if (!t.Alive) return;
+            bool wasAlive = t.Alive;
+            t.Hp -= dmg;
+            t.HitFlash = 0.12f;
+            if (t.IsMain) t.Awake = true;
+            if (wasAlive && !t.Alive && !t.IsMain)
+            {
+                AwardCrown(t.IsEnemy);
+                // awaken king when a princess tower falls
+                var king = _towers.FirstOrDefault(x => x.IsEnemy == t.IsEnemy && x.IsMain);
+                if (king != null) king.Awake = true;
             }
         }
 
@@ -394,6 +496,13 @@ namespace LumiaRoyale.Game
         private void DrawDeployHint()
         {
             if (_selectedHand < 0 || _matchState != "") return;
+            var card = _hand[_selectedHand];
+            if (card.Kind == CardKind.Spell)
+            {
+                DrawRect(_arenaRect, new Color(255, 160, 80, 20));
+                DrawRect(_arenaRect, new Color(255, 180, 120, 90), 2);
+                return;
+            }
             int midY = _arenaRect.Center.Y + 20;
             var allowed = new Rectangle(_arenaRect.X, midY, _arenaRect.Width, _arenaRect.Bottom - midY);
             DrawRect(allowed, new Color(120, 255, 160, 30));
@@ -435,27 +544,42 @@ namespace LumiaRoyale.Game
                 if (!u.Alive) continue;
                 Color team = u.IsEnemy ? new Color(210, 70, 70) : new Color(80, 150, 235);
                 Color dark = u.IsEnemy ? new Color(120, 30, 30) : new Color(35, 75, 130);
-                int s = u.Def.Kind == UnitKind.Melee ? 22 : 18;
+                if (u.IsBuilding)
+                {
+                    var b = new Rectangle((int)u.Pos.X - 14, (int)u.Pos.Y - 14, 28, 28);
+                    DrawRect(new Rectangle(b.X + 3, b.Bottom - 1, b.Width, 4), new Color(0, 0, 0, 50));
+                    DrawRect(b, new Color(140, 145, 155));
+                    DrawRect(b, dark, 2);
+                    DrawRect(new Rectangle(b.X + 5, b.Y + 5, b.Width - 10, 8), u.Def.Color);
+                    DrawRect(new Rectangle(b.Center.X - 3, b.Y - 6, 6, 8), team);
+                    if (u.HitFlash > 0) DrawRect(b, new Color(255, 255, 255, 110));
+                    DrawHpBar(b.X - 2, b.Y - 11, b.Width + 4, 4, u.Hp, u.MaxHp);
+                    // lifetime
+                    float lt = u.Def.Lifetime > 0 ? MathHelper.Clamp(u.LifeLeft / u.Def.Lifetime, 0, 1) : 0;
+                    DrawRect(new Rectangle(b.X - 2, b.Bottom + 5, b.Width + 4, 3), new Color(20, 20, 20, 160));
+                    DrawRect(new Rectangle(b.X - 2, b.Bottom + 5, (int)((b.Width + 4) * lt), 3), new Color(200, 200, 255));
+                    continue;
+                }
+
+                int s = u.Def.Kind == CardKind.Melee ? 22 : 18;
                 var body = new Rectangle((int)u.Pos.X - s / 2, (int)u.Pos.Y - s / 2, s, s);
-                // shadow
                 DrawRect(new Rectangle(body.X + 2, body.Bottom - 2, body.Width - 2, 4), new Color(0, 0, 0, 55));
                 DrawRect(body, u.Def.Color);
                 DrawRect(body, dark, 2);
                 DrawRect(new Rectangle(body.X + 3, body.Y + 3, body.Width - 6, 5), new Color(255, 255, 255, 55));
-                // team marker
                 DrawRect(new Rectangle(body.Center.X - 4, body.Y - 5, 8, 4), team);
-                if (u.Def.Kind == UnitKind.Ranged)
-                {
+                if (u.Def.Kind == CardKind.Ranged)
                     DrawRect(new Rectangle(body.Center.X - 2, body.Center.Y - 2, 4, 4), Color.White);
-                }
                 if (u.HitFlash > 0) DrawRect(body, new Color(255, 255, 255, 110));
-
-                float pct = Math.Max(0, (float)u.Hp / u.MaxHp);
-                var hbg = new Rectangle(body.X - 2, body.Y - 9, body.Width + 4, 4);
-                var hfg = new Rectangle(hbg.X, hbg.Y, (int)(hbg.Width * pct), hbg.Height);
-                DrawRect(hbg, new Color(15, 15, 15, 190));
-                DrawRect(hfg, pct > 0.35f ? new Color(120, 230, 110) : new Color(235, 90, 80));
+                DrawHpBar(body.X - 2, body.Y - 9, body.Width + 4, 4, u.Hp, u.MaxHp);
             }
+        }
+
+        private void DrawHpBar(int x, int y, int w, int h, int hp, int maxHp)
+        {
+            float pct = Math.Max(0, (float)hp / maxHp);
+            DrawRect(new Rectangle(x, y, w, h), new Color(15, 15, 15, 190));
+            DrawRect(new Rectangle(x, y, (int)(w * pct), h), pct > 0.35f ? new Color(120, 230, 110) : new Color(235, 90, 80));
         }
 
         private void DrawFx()
@@ -484,8 +608,6 @@ namespace LumiaRoyale.Game
             DrawRect(fg, new Color(165, 90, 240));
             DrawRect(new Rectangle(bg.X, bg.Y, fg.Width, 6), new Color(210, 170, 255, 90));
             DrawRect(bg, new Color(220, 220, 230, 120), 1);
-
-            // mana pips
             for (int i = 1; i < 10; i++)
             {
                 int x = bg.X + (int)(barW * (i / 10f));
@@ -493,8 +615,11 @@ namespace LumiaRoyale.Game
             }
 
             string msg = _statusTimer > 0 ? _status : (_selectedHand >= 0 ? "Escolha onde posicionar" : "Selecione uma carta");
-            DrawStatusText(msg, 14, 14, 7, Color.White);
-            DrawStatusText(((int)_mana).ToString() + "/10", bg.Right - 46, 16, 6, new Color(230, 210, 255));
+            DrawStatusText(msg, 14, 12, 7, Color.White);
+            DrawStatusText(((int)_mana).ToString() + "/10", 14, 28, 6, new Color(230, 210, 255));
+            int sec = Math.Max(0, (int)Math.Ceiling(_timeLeft));
+            DrawStatusText((sec / 60) + ":" + (sec % 60).ToString("00"), GraphicsDevice.Viewport.Width / 2 - 24, 12, 6, Color.White);
+            DrawStatusText(_playerCrowns + "x" + _enemyCrowns, GraphicsDevice.Viewport.Width - 52, 12, 6, new Color(255, 230, 140));
         }
 
         private void DrawCards()
@@ -515,11 +640,25 @@ namespace LumiaRoyale.Game
                 var art = new Rectangle(r.X + 7, r.Y + 7, r.Width - 14, r.Height - 38);
                 DrawRect(art, Color.Lerp(def.Color, Color.Black, 0.15f));
                 DrawRect(new Rectangle(art.X, art.Y, art.Width, 10), new Color(255, 255, 255, 35));
-                // tiny unit preview
+                // tiny preview
                 var prev = new Rectangle(art.Center.X - 10, art.Center.Y - 8, 20, 20);
-                DrawRect(prev, def.Color);
-                DrawRect(prev, Color.White * 0.7f, 1);
-                if (def.Kind == UnitKind.Ranged) DrawRect(new Rectangle(prev.Center.X - 2, prev.Center.Y - 2, 4, 4), Color.White);
+                if (def.Kind == CardKind.Spell)
+                {
+                    DrawRect(prev, new Color(255, 255, 255, 30), 1);
+                    DrawRect(new Rectangle(prev.Center.X - 5, prev.Center.Y - 5, 10, 10), def.Color);
+                }
+                else if (def.Kind == CardKind.Building)
+                {
+                    DrawRect(prev, new Color(150, 155, 165));
+                    DrawRect(new Rectangle(prev.X + 4, prev.Y + 4, prev.Width - 8, 6), def.Color);
+                    DrawRect(prev, Color.White * 0.7f, 1);
+                }
+                else
+                {
+                    DrawRect(prev, def.Color);
+                    DrawRect(prev, Color.White * 0.7f, 1);
+                    if (def.Kind == CardKind.Ranged) DrawRect(new Rectangle(prev.Center.X - 2, prev.Center.Y - 2, 4, 4), Color.White);
+                }
 
                 var costR = new Rectangle(r.X + 6, r.Bottom - 26, 28, 20);
                 DrawRect(costR, new Color(126, 66, 180));

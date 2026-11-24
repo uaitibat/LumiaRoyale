@@ -14,6 +14,7 @@ namespace LumiaRoyale.Game
         public float Cooldown;
         public float CooldownLeft;
         public float HitFlash;
+        public bool Awake;
         public bool Alive => Hp > 0;
 
         public Tower(Vector2 pos, int hp, bool isMain, bool isEnemy)
@@ -22,10 +23,11 @@ namespace LumiaRoyale.Game
             Hp = MaxHp = hp;
             IsMain = isMain;
             IsEnemy = isEnemy;
-            Range = isMain ? 120f : 105f;
-            Damage = isMain ? 24 : 18;
+            Range = isMain ? 125f : 110f;
+            Damage = isMain ? 26 : 20;
             Cooldown = 1.0f;
             HitFlash = 0f;
+            Awake = !isMain; // king sleeps until damaged
         }
     }
 }

@@ -281,10 +281,35 @@ namespace LumiaRoyale.Game
 
         private bool IsValidDeploy(CardDef card, Vector2 pos, bool enemy)
         {
+            if (!_arenaRect.Contains((int)pos.X, (int)pos.Y)) return false;
+            if (card.Kind == CardKind.Spell) return true;
+
             int midY = _arenaRect.Center.Y + 20;
-            if (card.Kind == CardKind.Spell) return _arenaRect.Contains((int)pos.X, (int)pos.Y);
-            if (enemy) return pos.Y <= midY;
-            return pos.Y >= midY;
+            bool onOwnSide = enemy ? pos.Y <= midY : pos.Y >= midY;
+            if (onOwnSide) return true;
+
+            // After destroying an enemy side tower, allow deploying in that lane's pocket on opponent side
+            float leftX = _arenaRect.Left + _arenaRect.Width * 0.25f;
+            float rightX = _arenaRect.Left + _arenaRect.Width * 0.75f;
+            float laneX = Math.Abs(pos.X - leftX) <= Math.Abs(pos.X - rightX) ? leftX : rightX;
+            var sideTower = _towers.FirstOrDefault(t => t.IsEnemy != enemy && !t.IsMain && Math.Abs(t.Pos.X - laneX) < 20f);
+            if (sideTower != null && sideTower.Alive) return false;
+
+            float pocketHalfW = _arenaRect.Width * 0.22f;
+            if (Math.Abs(pos.X - laneX) > pocketHalfW) return false;
+
+            if (enemy)
+            {
+                // enemy deploying into player's pocket (player side tower destroyed)
+                float minY = _arenaRect.Bottom - _arenaRect.Height * 0.35f;
+                return pos.Y >= minY;
+            }
+            else
+            {
+                // player deploying into enemy pocket
+                float maxY = _arenaRect.Top + _arenaRect.Height * 0.35f;
+                return pos.Y <= maxY;
+            }
         }
 
         private void PlayCard(CardDef card, Vector2 pos, bool enemy)
@@ -869,6 +894,17 @@ namespace LumiaRoyale.Game
                 return target.pos;
             }
 
+            // King tower: if on enemy side, route through a lane then approach center king
+            if (onEnemySide)
+            {
+                float approachLane = crossLane;
+                if (Math.Abs(u.Pos.Y - target.pos.Y) > 80f && Math.Abs(u.Pos.X - approachLane) > 18f)
+                    return new Vector2(approachLane, u.Pos.Y);
+                if (Math.Abs(u.Pos.Y - target.pos.Y) > 60f)
+                    return new Vector2(approachLane, target.pos.Y);
+                return target.pos;
+            }
+
             return target.pos;
         }
 
@@ -974,6 +1010,41 @@ namespace LumiaRoyale.Game
             var allowed = new Rectangle(_arenaRect.X, midY, _arenaRect.Width, _arenaRect.Bottom - midY);
             DrawRect(allowed, new Color(120, 255, 160, 30));
             DrawRect(allowed, new Color(150, 255, 180, 120), 2);
+
+            // pockets when enemy side towers are down
+            foreach (var pocket in GetDeployPockets(false))
+            {
+                DrawRect(pocket, new Color(120, 255, 160, 35));
+                DrawRect(pocket, new Color(180, 255, 200, 140), 2);
+            }
+        }
+
+        private List<Rectangle> GetDeployPockets(bool enemyPlayer)
+        {
+            var pockets = new List<Rectangle>();
+            float leftX = _arenaRect.Left + _arenaRect.Width * 0.25f;
+            float rightX = _arenaRect.Left + _arenaRect.Width * 0.75f;
+            float pocketHalfW = _arenaRect.Width * 0.22f;
+            int pocketH = (int)(_arenaRect.Height * 0.35f);
+
+            foreach (float laneX in new[] { leftX, rightX })
+            {
+                var sideTower = _towers.FirstOrDefault(t => t.IsEnemy != enemyPlayer && !t.IsMain && Math.Abs(t.Pos.X - laneX) < 20f);
+                if (sideTower == null || sideTower.Alive) continue;
+                int x = (int)(laneX - pocketHalfW);
+                int w = (int)(pocketHalfW * 2);
+                if (enemyPlayer)
+                {
+                    int y = _arenaRect.Bottom - pocketH;
+                    pockets.Add(new Rectangle(x, y, w, pocketH));
+                }
+                else
+                {
+                    int y = _arenaRect.Top;
+                    pockets.Add(new Rectangle(x, y, w, pocketH));
+                }
+            }
+            return pockets;
         }
 
         private void DrawTowers()

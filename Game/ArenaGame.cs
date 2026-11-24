@@ -385,6 +385,24 @@ namespace LumiaRoyale.Game
         {
             u.Pos.X = MathHelper.Clamp(u.Pos.X, _arenaRect.Left + 12, _arenaRect.Right - 12);
             u.Pos.Y = MathHelper.Clamp(u.Pos.Y, _arenaRect.Top + 12, _arenaRect.Bottom - 12);
+
+            float bridgeY = _arenaRect.Center.Y;
+            float riverTop = bridgeY - 14f;
+            float riverBottom = bridgeY + 14f;
+            bool inRiver = u.Pos.Y > riverTop && u.Pos.Y < riverBottom;
+            if (!inRiver) return;
+
+            float leftBridge = _arenaRect.Left + _arenaRect.Width * 0.25f;
+            float rightBridge = _arenaRect.Left + _arenaRect.Width * 0.75f;
+            float bridgeHalf = 24f;
+            bool onBridge = Math.Abs(u.Pos.X - leftBridge) <= bridgeHalf || Math.Abs(u.Pos.X - rightBridge) <= bridgeHalf;
+            if (onBridge) return;
+
+            // push out of river to nearest side
+            if (u.IsEnemy)
+                u.Pos.Y = riverBottom + 1f;
+            else
+                u.Pos.Y = riverTop - 1f;
         }
 
         private struct TargetInfo

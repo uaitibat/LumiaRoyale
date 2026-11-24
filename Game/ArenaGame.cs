@@ -319,32 +319,169 @@ namespace LumiaRoyale.Game
         {
             _enemySpawnTimer -= dt;
             if (_enemySpawnTimer > 0) return;
-            _enemySpawnTimer = 2.2f + (float)_rng.NextDouble() * 2.2f;
+            _enemySpawnTimer = 1.8f + (float)_rng.NextDouble() * 2.0f;
 
             var affordable = _deck.Where(c => c.Cost <= _enemyMana).ToList();
             if (affordable.Count == 0) return;
-            var card = affordable[_rng.Next(affordable.Count)];
-            _enemyMana -= card.Cost;
 
-            Vector2 pos;
+            var card = ChooseEnemyCard(affordable);
+            if (card == null) return;
+
+            Vector2 pos = ChooseEnemyPos(card);
+            if (!IsValidDeploy(card, pos, true)) return;
+
+            _enemyMana -= card.Cost;
+            SpawnUnit(card, pos, true);
+        }
+
+        private CardDef ChooseEnemyCard(List<CardDef> affordable)
+        {
+            var playerUnits = _units.Where(u => !u.IsEnemy && u.Alive).ToList();
+            var enemyUnits = _units.Where(u => u.IsEnemy && u.Alive).ToList();
+
+            // Spell: use on cluster of player units
+            var spell = affordable.Where(c => c.Kind == CardKind.Spell).OrderByDescending(c => c.Cost).FirstOrDefault();
+            if (spell != null)
+            {
+                Vector2 cluster = FindClusterCenter(playerUnits, spell.AreaRadius);
+                if (cluster != Vector2.Zero && CountNear(playerUnits, cluster, spell.AreaRadius) >= 2)
+                    return spell;
+            }
+
+            // Defense: player pushing close to enemy side
+            var threats = playerUnits.Where(u => u.Pos.Y < _arenaRect.Center.Y + 40f).ToList();
+            if (threats.Count > 0)
+            {
+                Vector2 threatCenter = AveragePos(threats);
+                int nearCount = CountNear(playerUnits, threatCenter, 90f);
+
+                var building = affordable.FirstOrDefault(c => c.Kind == CardKind.Building);
+                if (building != null && nearCount >= 1 && !enemyUnits.Any(u => u.IsBuilding && Vector2.Distance(u.Pos, threatCenter) < 140f))
+                    return building;
+
+                if (nearCount >= 2)
+                {
+                    var splashOrRanged = affordable.FirstOrDefault(c => c.Kind == CardKind.Ranged && c.Cost >= 2);
+                    if (splashOrRanged != null) return splashOrRanged;
+                }
+
+                var counter = affordable
+                    .Where(c => c.Kind == CardKind.Melee || c.Kind == CardKind.Ranged)
+                    .OrderByDescending(c => c.Hp)
+                    .FirstOrDefault();
+                if (counter != null) return counter;
+            }
+
+            // Offensive: if we have mana advantage or few player units, push a lane
+            if (_enemyMana >= 6f || playerUnits.Count <= 1)
+            {
+                var push = affordable
+                    .Where(c => c.Kind == CardKind.Melee || c.Kind == CardKind.Ranged)
+                    .OrderByDescending(c => c.Cost)
+                    .FirstOrDefault();
+                if (push != null) return push;
+            }
+
+            // Default: cheapest non-spell, or random affordable
+            return affordable
+                .OrderBy(c => c.Kind == CardKind.Spell ? 10 : 0)
+                .ThenBy(c => c.Cost)
+                .FirstOrDefault();
+        }
+
+        private Vector2 ChooseEnemyPos(CardDef card)
+        {
+            float leftX = _arenaRect.Left + _arenaRect.Width * 0.25f;
+            float rightX = _arenaRect.Left + _arenaRect.Width * 0.75f;
+            var playerUnits = _units.Where(u => !u.IsEnemy && u.Alive).ToList();
+
             if (card.Kind == CardKind.Spell)
             {
-                // target cluster of player units or a tower
-                var targets = _units.Where(u => !u.IsEnemy && u.Alive).ToList();
-                if (targets.Count > 0) pos = targets[_rng.Next(targets.Count)].Pos;
-                else
-                {
-                    var tower = _towers.Where(t => !t.IsEnemy && t.Alive).OrderBy(t => t.IsMain ? 1 : 0).FirstOrDefault();
-                    pos = tower != null ? tower.Pos : new Vector2(_arenaRect.Center.X, _arenaRect.Bottom - 120);
-                }
+                Vector2 cluster = FindClusterCenter(playerUnits, card.AreaRadius);
+                if (cluster != Vector2.Zero) return cluster;
+                var tower = _towers.Where(t => !t.IsEnemy && t.Alive).OrderBy(t => t.IsMain ? 1 : 0).FirstOrDefault();
+                return tower != null ? tower.Pos : new Vector2(_arenaRect.Center.X, _arenaRect.Bottom - 120);
+            }
+
+            // Pick lane with most threat, or weak player tower
+            float laneX = leftX;
+            int leftThreat = playerUnits.Count(u => Math.Abs(u.Pos.X - leftX) < _arenaRect.Width * 0.3f);
+            int rightThreat = playerUnits.Count(u => Math.Abs(u.Pos.X - rightX) < _arenaRect.Width * 0.3f);
+            if (rightThreat > leftThreat) laneX = rightX;
+            else if (rightThreat == leftThreat)
+            {
+                // prefer lane where player's side tower is lower HP
+                var pl = _towers.FirstOrDefault(t => !t.IsEnemy && !t.IsMain && t.Alive && Math.Abs(t.Pos.X - leftX) < 20f);
+                var pr = _towers.FirstOrDefault(t => !t.IsEnemy && !t.IsMain && t.Alive && Math.Abs(t.Pos.X - rightX) < 20f);
+                int lh = pl != null ? pl.Hp : 99999;
+                int rh = pr != null ? pr.Hp : 99999;
+                laneX = rh < lh ? rightX : leftX;
+            }
+
+            float y;
+            if (card.Kind == CardKind.Building)
+            {
+                // place defensively behind river on chosen lane
+                y = _arenaRect.Center.Y - 70f - (float)_rng.NextDouble() * 40f;
             }
             else
             {
-                float x = _arenaRect.Left + 40 + (float)_rng.NextDouble() * (_arenaRect.Width - 80);
-                float y = _arenaRect.Top + 80 + (float)_rng.NextDouble() * (_arenaRect.Height * 0.25f);
-                pos = new Vector2(x, y);
+                // defend near threat or push at bridge approach
+                var laneThreats = playerUnits.Where(u => Math.Abs(u.Pos.X - laneX) < _arenaRect.Width * 0.35f && u.Pos.Y < _arenaRect.Center.Y).ToList();
+                if (laneThreats.Count > 0)
+                {
+                    float ty = laneThreats.Min(u => u.Pos.Y);
+                    y = Math.Max(_arenaRect.Top + 30f, ty - 50f);
+                }
+                else
+                {
+                    y = _arenaRect.Top + 90f + (float)_rng.NextDouble() * (_arenaRect.Height * 0.18f);
+                }
             }
-            SpawnUnit(card, pos, true);
+
+            float x = laneX + ((float)_rng.NextDouble() - 0.5f) * 24f;
+            return new Vector2(x, y);
+        }
+
+        private static Vector2 FindClusterCenter(List<Unit> units, float radius)
+        {
+            if (units.Count == 0) return Vector2.Zero;
+            Vector2 best = Vector2.Zero;
+            int bestCount = 1;
+            for (int i = 0; i < units.Count; i++)
+            {
+                int count = 0;
+                Vector2 sum = Vector2.Zero;
+                for (int j = 0; j < units.Count; j++)
+                {
+                    if (Vector2.Distance(units[i].Pos, units[j].Pos) <= radius)
+                    {
+                        count++;
+                        sum += units[j].Pos;
+                    }
+                }
+                if (count > bestCount)
+                {
+                    bestCount = count;
+                    best = sum / count;
+                }
+            }
+            return best;
+        }
+
+        private static int CountNear(List<Unit> units, Vector2 pos, float radius)
+        {
+            int c = 0;
+            for (int i = 0; i < units.Count; i++)
+                if (Vector2.Distance(units[i].Pos, pos) <= radius) c++;
+            return c;
+        }
+
+        private static Vector2 AveragePos(List<Unit> units)
+        {
+            Vector2 sum = Vector2.Zero;
+            for (int i = 0; i < units.Count; i++) sum += units[i].Pos;
+            return sum / Math.Max(1, units.Count);
         }
 
         private void UpdateUnits(float dt)

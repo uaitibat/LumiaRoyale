@@ -264,15 +264,15 @@ namespace LumiaRoyale.Game
                 {
                     int w = GraphicsDevice.Viewport.Width;
                     int h = GraphicsDevice.Viewport.Height;
-                    var resume = new Rectangle(w / 2 - 110, h / 2 - 20, 220, 44);
-                    var restart = new Rectangle(w / 2 - 110, h / 2 + 36, 220, 44);
+                    var resume = new Rectangle(w / 2 - 110, h / 2 - 17, 220, 38);
+                    var restart = new Rectangle(w / 2 - 110, h / 2 + 31, 220, 38);
                     if (resume.Contains((int)p.X, (int)p.Y)) { _matchState = "playing"; _status = "Retomado"; _statusTimer = 1f; }
                     else if (restart.Contains((int)p.X, (int)p.Y)) { ResetMatch(); }
                     return;
                 }
 
                 // pause button top-right HUD
-                var pauseBtn = new Rectangle(GraphicsDevice.Viewport.Width - 44, 18, 36, 36);
+                var pauseBtn = new Rectangle(GraphicsDevice.Viewport.Width - 42, 44, 32, 32);
                 if (pauseBtn.Contains((int)p.X, (int)p.Y))
                 {
                     _matchState = "paused";
@@ -1450,33 +1450,60 @@ namespace LumiaRoyale.Game
 
         private void DrawHud()
         {
-            int hudH = 76;
-            DrawRect(new Rectangle(0, 0, GraphicsDevice.Viewport.Width, hudH), new Color(10, 18, 14, 185));
-            DrawRect(new Rectangle(0, hudH - 2, GraphicsDevice.Viewport.Width, 2), new Color(255, 255, 255, 30));
+            int w = GraphicsDevice.Viewport.Width;
+            int hudH = 92;
+            DrawRect(new Rectangle(0, 0, w, hudH), new Color(12, 20, 30, 210));
+            DrawRect(new Rectangle(0, hudH - 2, w, 2), new Color(255, 255, 255, 35));
 
-            int barW = GraphicsDevice.Viewport.Width - 28;
-            var bg = new Rectangle(14, 44, barW, 18);
+            // Timer + crowns panel
+            int sec = Math.Max(0, (int)Math.Ceiling(_timeLeft));
+            var timeColor = sec <= 30 ? new Color(255, 110, 110) : new Color(245, 245, 245);
+            string timeStr = (sec / 60) + ":" + (sec % 60).ToString("00");
+            DrawRect(new Rectangle(w / 2 - 54, 8, 108, 28), new Color(25, 35, 50, 180));
+            DrawRect(new Rectangle(w / 2 - 54, 8, 108, 28), new Color(255, 255, 255, 45), 1);
+            DrawPixelText(timeStr, w / 2 - 28, 14, 2, timeColor);
+
+            DrawRect(new Rectangle(w - 98, 8, 84, 28), new Color(40, 34, 20, 180));
+            DrawRect(new Rectangle(w - 98, 8, 84, 28), new Color(255, 220, 120, 80), 1);
+            DrawPixelText(_playerCrowns + "-" + _enemyCrowns, w - 74, 14, 2, new Color(255, 230, 140));
+
+            if (_matchState == "playing")
+            {
+                var pause = new Rectangle(w - 42, 44, 32, 32);
+                DrawRect(pause, new Color(45, 55, 70, 200));
+                DrawRect(pause, new Color(200, 210, 220, 120), 1);
+                DrawRect(new Rectangle(pause.X + 9, pause.Y + 8, 4, 16), Color.White);
+                DrawRect(new Rectangle(pause.X + 19, pause.Y + 8, 4, 16), Color.White);
+            }
+
+            // Mana bar
+            int barX = 14;
+            int barW = w - 64;
+            int barY = 58;
+            int barH = 22;
+            var bg = new Rectangle(barX, barY, barW, barH);
             float pct = _mana / ManaMax;
-            var fg = new Rectangle(14, 44, (int)(barW * pct), 18);
-            DrawRect(bg, new Color(35, 35, 45));
-            DrawRect(fg, new Color(165, 90, 240));
-            DrawRect(new Rectangle(bg.X, bg.Y, fg.Width, 6), new Color(210, 170, 255, 90));
-            DrawRect(bg, new Color(220, 220, 230, 120), 1);
+            var fg = new Rectangle(barX, barY, (int)(barW * pct), barH);
+            DrawRect(bg, new Color(30, 28, 40));
+            DrawRect(fg, new Color(150, 85, 235));
+            DrawRect(new Rectangle(bg.X, bg.Y, fg.Width, 7), new Color(210, 170, 255, 80));
+            DrawRect(bg, new Color(210, 210, 225, 110), 1);
             for (int i = 1; i < 10; i++)
             {
                 int x = bg.X + (int)(barW * (i / 10f));
-                DrawRect(new Rectangle(x, bg.Y, 1, bg.Height), new Color(255, 255, 255, 35));
+                DrawRect(new Rectangle(x, bg.Y, 1, bg.Height), new Color(255, 255, 255, 30));
             }
+            DrawPixelText(((int)_mana) + "/10", barX + 6, barY + 5, 2, new Color(240, 230, 255));
 
-            string msg = _statusTimer > 0 ? _status : (_selectedHand >= 0 ? "Escolha onde posicionar" : "Selecione uma carta");
-            DrawStatusText(msg, 14, 12, 7, Color.White);
-            DrawStatusText(((int)_mana).ToString() + "/10", 14, 28, 6, new Color(230, 210, 255));
-            int sec = Math.Max(0, (int)Math.Ceiling(_timeLeft));
-            var timeColor = sec <= 30 ? new Color(255, 120, 120) : Color.White;
-            DrawStatusText((sec / 60) + ":" + (sec % 60).ToString("00"), GraphicsDevice.Viewport.Width / 2 - 24, 12, 6, timeColor);
-            DrawStatusText(_playerCrowns + "x" + _enemyCrowns, GraphicsDevice.Viewport.Width - 52, 12, 6, new Color(255, 230, 140));
-            if (_matchState == "playing")
-                DrawStatusText("II", GraphicsDevice.Viewport.Width - 24, 28, 6, new Color(200, 200, 200));
+            // Status
+            string msg = _statusTimer > 0 ? _status : (_selectedHand >= 0 ? "Toque na arena para posicionar" : "Escolha uma carta");
+            Color msgBg = _statusTimer > 0 ? new Color(20, 30, 45, 180) : new Color(0, 0, 0, 0);
+            int msgW = Math.Min(w - 20, msg.Length * 8 + 16);
+            if (_statusTimer > 0)
+            {
+                DrawRect(new Rectangle(10, 40, msgW, 16), msgBg);
+            }
+            DrawPixelText(msg.ToUpperInvariant(), 14, 42, 1, _statusTimer > 0 ? new Color(255, 245, 180) : new Color(190, 205, 220));
         }
 
         private void DrawCards()
@@ -1488,51 +1515,64 @@ namespace LumiaRoyale.Game
                 var def = _hand[i];
                 bool sel = i == _selectedHand;
                 bool canAfford = def != null && _mana >= def.Cost;
-                Color bg = sel ? new Color(60, 60, 68) : new Color(34, 34, 40);
-                if (!canAfford) bg = new Color(28, 28, 32);
-                DrawRect(r, bg);
-                DrawRect(r, sel ? new Color(255, 220, 90) : new Color(120, 120, 130), sel ? 3 : 1);
+
+                Color bgTop = sel ? new Color(70, 78, 95) : new Color(44, 50, 62);
+                Color bgBot = sel ? new Color(45, 52, 66) : new Color(28, 32, 42);
+                if (!canAfford) { bgTop = new Color(36, 38, 44); bgBot = new Color(24, 26, 30); }
+                DrawRect(r, bgBot);
+                DrawRect(new Rectangle(r.X, r.Y, r.Width, r.Height / 2), bgTop);
+                DrawRect(r, sel ? new Color(255, 220, 90) : new Color(95, 105, 120), sel ? 3 : 2);
+                if (sel) DrawRect(new Rectangle(r.X + 3, r.Y + 3, r.Width - 6, r.Height - 6), new Color(255, 220, 90, 35), 1);
 
                 if (def == null) continue;
-                var art = new Rectangle(r.X + 7, r.Y + 7, r.Width - 14, r.Height - 38);
-                DrawRect(art, Color.Lerp(def.Color, Color.Black, 0.15f));
-                DrawRect(new Rectangle(art.X, art.Y, art.Width, 10), new Color(255, 255, 255, 35));
-                // tiny preview
-                var prev = new Rectangle(art.Center.X - 10, art.Center.Y - 8, 20, 20);
+
+                var art = new Rectangle(r.X + 6, r.Y + 6, r.Width - 12, r.Height - 42);
+                DrawRect(art, Color.Lerp(def.Color, Color.Black, 0.25f));
+                DrawRect(new Rectangle(art.X, art.Y, art.Width, 8), new Color(255, 255, 255, 30));
+                DrawRect(art, new Color(255, 255, 255, 25), 1);
+
+                var prev = new Rectangle(art.Center.X - 12, art.Center.Y - 10, 24, 24);
                 if (def.Kind == CardKind.Spell)
                 {
-                    DrawRect(prev, new Color(255, 255, 255, 30), 1);
-                    DrawRect(new Rectangle(prev.Center.X - 5, prev.Center.Y - 5, 10, 10), def.Color);
+                    DrawRect(new Rectangle(prev.X - 2, prev.Y - 2, prev.Width + 4, prev.Height + 4), new Color(255, 255, 255, 20), 1);
+                    DrawRect(new Rectangle(prev.Center.X - 6, prev.Center.Y - 6, 12, 12), def.Color);
+                    DrawRect(new Rectangle(prev.Center.X - 2, prev.Center.Y - 10, 4, 20), Color.White * 0.3f);
+                    DrawRect(new Rectangle(prev.Center.X - 10, prev.Center.Y - 2, 20, 4), Color.White * 0.3f);
                 }
                 else if (def.Kind == CardKind.Building)
                 {
+                    DrawRect(new Rectangle(prev.X, prev.Bottom - 4, prev.Width, 4), new Color(80, 80, 90));
                     DrawRect(prev, new Color(150, 155, 165));
                     DrawRect(new Rectangle(prev.X + 4, prev.Y + 4, prev.Width - 8, 6), def.Color);
-                    DrawRect(prev, Color.White * 0.7f, 1);
+                    DrawRect(prev, Color.White * 0.5f, 1);
                 }
                 else if (def.SpawnCount > 1)
                 {
-                    for (int k = 0; k < 4; k++)
+                    for (int k = 0; k < Math.Min(4, def.SpawnCount); k++)
                     {
-                        int px = prev.X + 2 + (k % 2) * 9;
-                        int py = prev.Y + 2 + (k / 2) * 9;
-                        DrawRect(new Rectangle(px, py, 6, 6), def.Color);
-                        DrawRect(new Rectangle(px, py, 6, 6), Color.White * 0.5f, 1);
+                        int px = prev.X + 1 + (k % 2) * 11;
+                        int py = prev.Y + 1 + (k / 2) * 11;
+                        DrawRect(new Rectangle(px, py, 8, 8), def.Color);
+                        DrawRect(new Rectangle(px, py, 8, 8), Color.White * 0.45f, 1);
                     }
                 }
                 else
                 {
+                    DrawRect(new Rectangle(prev.X + 2, prev.Bottom, prev.Width - 4, 3), new Color(0, 0, 0, 50));
                     DrawRect(prev, def.Color);
-                    DrawRect(prev, Color.White * 0.7f, 1);
-                    if (def.Kind == CardKind.Ranged) DrawRect(new Rectangle(prev.Center.X - 2, prev.Center.Y - 2, 4, 4), Color.White);
+                    DrawRect(new Rectangle(prev.X + 3, prev.Y + 3, prev.Width - 6, 5), Color.White * 0.2f);
+                    DrawRect(prev, Color.White * 0.5f, 1);
+                    if (def.Kind == CardKind.Ranged)
+                        DrawRect(new Rectangle(prev.Center.X - 2, prev.Center.Y - 2, 4, 4), new Color(255, 255, 255, 220));
                 }
 
-                var costR = new Rectangle(r.X + 6, r.Bottom - 26, 28, 20);
-                DrawRect(costR, new Color(126, 66, 180));
-                DrawRect(costR, new Color(230, 210, 255), 1);
-                DrawCostPips(costR, def.Cost);
+                var costR = new Rectangle(r.X + 6, r.Bottom - 30, 30, 22);
+                DrawRect(costR, canAfford ? new Color(140, 70, 200) : new Color(90, 60, 110));
+                DrawRect(costR, new Color(230, 210, 255, 160), 1);
+                DrawPixelText(def.Cost.ToString(), costR.X + 9, costR.Y + 5, 2, Color.White);
 
-                DrawMiniLabel(def.Name, r.X + 38, r.Bottom - 22, 4, canAfford ? Color.White : new Color(170, 170, 170));
+                DrawMiniLabel(def.Name, r.X + 40, r.Bottom - 23, 4, canAfford ? new Color(235, 240, 245) : new Color(140, 145, 150));
+                if (!canAfford) DrawRect(r, new Color(0, 0, 0, 55));
             }
         }
 
@@ -1631,46 +1671,63 @@ namespace LumiaRoyale.Game
         private void DrawEndOverlay()
         {
             if (_matchState == "playing") return;
-            DrawRect(new Rectangle(0, 0, GraphicsDevice.Viewport.Width, GraphicsDevice.Viewport.Height), new Color(0, 0, 0, 140));
+            DrawRect(new Rectangle(0, 0, GraphicsDevice.Viewport.Width, GraphicsDevice.Viewport.Height), new Color(0, 0, 0, 150));
+
+            int vw = GraphicsDevice.Viewport.Width;
+            int vh = GraphicsDevice.Viewport.Height;
 
             if (_matchState == "menu")
             {
-                var box = new Rectangle(GraphicsDevice.Viewport.Width / 2 - 160, GraphicsDevice.Viewport.Height / 2 - 90, 320, 180);
-                DrawRect(box, new Color(30, 60, 45));
-                DrawRect(box, new Color(200, 220, 200), 2);
-                DrawPixelText("LUMIAROYALE", box.X + 56, box.Y + 28, 4, Color.White);
-                DrawPixelText("ARENA DE CARTAS", box.X + 72, box.Y + 66, 2, new Color(200, 230, 200));
-                DrawPixelText("TOQUE PARA JOGAR", box.X + 68, box.Y + 110, 2, new Color(255, 230, 140));
-                DrawPixelText("DESTRUA A TORRE PRINCIPAL", box.X + 34, box.Y + 140, 2, new Color(180, 200, 180));
+                var box = new Rectangle(vw / 2 - 170, vh / 2 - 105, 340, 210);
+                DrawRect(box, new Color(24, 50, 38, 245));
+                DrawRect(box, new Color(120, 200, 140, 180), 2);
+                DrawRect(new Rectangle(box.X + 2, box.Y + 2, box.Width - 4, 44), new Color(255, 255, 255, 18));
+                DrawPixelText("LUMIAROYALE", box.X + 68, box.Y + 22, 4, Color.White);
+                DrawPixelText("ARENA DE CARTAS", box.X + 88, box.Y + 66, 2, new Color(190, 230, 200));
+
+                var play = new Rectangle(box.X + 60, box.Y + 100, 220, 40);
+                DrawRect(play, new Color(80, 160, 90));
+                DrawRect(play, new Color(220, 255, 225, 180), 2);
+                DrawPixelText("TOQUE PARA JOGAR", play.X + 30, play.Y + 14, 2, Color.White);
+                DrawPixelText("DESTRUA A TORRE PRINCIPAL", box.X + 44, box.Y + 160, 2, new Color(170, 200, 175));
                 return;
             }
 
             if (_matchState == "paused")
             {
-                var box = new Rectangle(GraphicsDevice.Viewport.Width / 2 - 140, GraphicsDevice.Viewport.Height / 2 - 90, 280, 170);
-                DrawRect(box, new Color(35, 45, 55));
-                DrawRect(box, Color.White, 2);
-                DrawPixelText("PAUSADO", box.X + 80, box.Y + 24, 4, Color.White);
-                var resume = new Rectangle(box.X + 30, box.Y + 72, 220, 34);
-                var restart = new Rectangle(box.X + 30, box.Y + 114, 220, 34);
-                DrawRect(resume, new Color(70, 130, 80)); DrawRect(resume, Color.White, 1);
-                DrawRect(restart, new Color(130, 70, 70)); DrawRect(restart, Color.White, 1);
-                DrawPixelText("RETOMAR", resume.X + 72, resume.Y + 11, 2, Color.White);
-                DrawPixelText("REINICIAR", restart.X + 64, restart.Y + 11, 2, Color.White);
+                var box = new Rectangle(vw / 2 - 150, vh / 2 - 95, 300, 190);
+                DrawRect(box, new Color(30, 40, 52, 245));
+                DrawRect(box, new Color(180, 200, 220, 160), 2);
+                DrawPixelText("PAUSADO", box.X + 90, box.Y + 26, 4, Color.White);
+
+                var resume = new Rectangle(box.X + 40, box.Y + 78, 220, 38);
+                var restart = new Rectangle(box.X + 40, box.Y + 126, 220, 38);
+                DrawRect(resume, new Color(65, 130, 80)); DrawRect(resume, new Color(220, 255, 225, 160), 1);
+                DrawRect(restart, new Color(140, 70, 70)); DrawRect(restart, new Color(255, 220, 220, 140), 1);
+                DrawPixelText("RETOMAR", resume.X + 76, resume.Y + 13, 2, Color.White);
+                DrawPixelText("REINICIAR", restart.X + 68, restart.Y + 13, 2, Color.White);
                 return;
             }
 
-            var ebox = new Rectangle(GraphicsDevice.Viewport.Width / 2 - 170, GraphicsDevice.Viewport.Height / 2 - 80, 340, 170);
-            Color c = _matchState == "win" ? new Color(60, 140, 80) : new Color(150, 60, 60);
+            bool win = _matchState == "win";
+            var ebox = new Rectangle(vw / 2 - 180, vh / 2 - 100, 360, 200);
+            Color c = win ? new Color(40, 110, 65, 245) : new Color(120, 45, 45, 245);
+            Color accent = win ? new Color(160, 255, 170) : new Color(255, 170, 170);
             DrawRect(ebox, c);
-            DrawRect(ebox, Color.White, 2);
-            string title = _matchState == "win" ? "VITORIA!" : "DERROTA";
-            DrawPixelText(title, ebox.X + 90, ebox.Y + 22, 4, Color.White);
-            DrawPixelText("COROAS " + _playerCrowns + " X " + _enemyCrowns, ebox.X + 86, ebox.Y + 64, 2, Color.White);
-            DrawPixelText("TORRES " + _enemyTowersLost + " X " + _playerTowersLost, ebox.X + 86, ebox.Y + 86, 2, new Color(230, 230, 230));
+            DrawRect(ebox, accent * 0.7f, 2);
+            DrawRect(new Rectangle(ebox.X + 2, ebox.Y + 2, ebox.Width - 4, 48), new Color(255, 255, 255, 18));
+
+            string title = win ? "VITORIA!" : "DERROTA";
+            DrawPixelText(title, ebox.X + (win ? 110 : 120), ebox.Y + 24, 4, Color.White);
+            DrawPixelText("COROAS " + _playerCrowns + " X " + _enemyCrowns, ebox.X + 100, ebox.Y + 74, 2, Color.White);
+            DrawPixelText("TORRES " + _enemyTowersLost + " X " + _playerTowersLost, ebox.X + 100, ebox.Y + 96, 2, new Color(235, 235, 235));
             int sec = Math.Max(0, (int)Math.Ceiling(_timeLeft));
-            DrawPixelText("TEMPO " + (sec / 60) + ":" + (sec % 60).ToString("00"), ebox.X + 110, ebox.Y + 108, 2, new Color(230, 230, 230));
-            DrawPixelText("TOQUE PARA REINICIAR", ebox.X + 62, ebox.Y + 136, 2, Color.White * 0.9f);
+            DrawPixelText("TEMPO " + (sec / 60) + ":" + (sec % 60).ToString("00"), ebox.X + 124, ebox.Y + 118, 2, new Color(235, 235, 235));
+
+            var again = new Rectangle(ebox.X + 70, ebox.Y + 148, 220, 34);
+            DrawRect(again, Color.White * 0.12f);
+            DrawRect(again, Color.White * 0.5f, 1);
+            DrawPixelText("TOQUE PARA REINICIAR", again.X + 20, again.Y + 11, 2, Color.White);
         }
 
         private void DrawRect(Rectangle r, Color c)

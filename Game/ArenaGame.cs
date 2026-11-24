@@ -1075,7 +1075,7 @@ namespace LumiaRoyale.Game
             _spriteBatch.End();
 
             // UI in pixel-perfect nearest-neighbor (SE98 / retro look)
-            _spriteBatch.Begin(samplerState: Microsoft.Xna.Framework.Graphics.SamplerState.PointSampler);
+            _spriteBatch.Begin(samplerState: Microsoft.Xna.Framework.Graphics.SamplerState.PointClamp);
             DrawHud();
             DrawCards();
             DrawEndOverlay();

@@ -22,6 +22,8 @@ namespace LumiaRoyale.Game
         private Texture2D _punyMageTex;
         private Texture2D _punyArcherPurpleTex;
         private Texture2D _punyMageRedTex;
+        private Texture2D _colossoTex;
+        private Texture2D _torretaTex;
 
         // SE98 / Void theme palette (from ~/.themes/se98-wm-theme-main)
         private static readonly Color Se98Face = new Color(212, 208, 200);      // #D4D0C8
@@ -115,6 +117,8 @@ namespace LumiaRoyale.Game
             _punyMageTex = LoadTex("Assets/Sprites/Puny/Mage-Cyan.png");
             _punyArcherPurpleTex = LoadTex("Assets/Sprites/Puny/Archer-Purple.png");
             _punyMageRedTex = LoadTex("Assets/Sprites/Puny/Mage-Red.png");
+            _colossoTex = LoadTex("Assets/Sprites/Colosso.png");
+            _torretaTex = LoadTex("Assets/Sprites/Torreta.png");
         }
 
         private Texture2D LoadTex(string relativePath)
@@ -1174,17 +1178,24 @@ namespace LumiaRoyale.Game
                 if (!t.Alive) continue;
                 Color team = t.IsEnemy ? new Color(208, 74, 74) : new Color(74, 146, 226);
                 Color teamDark = t.IsEnemy ? new Color(120, 36, 36) : new Color(36, 78, 132);
-                int size = t.IsMain ? 64 : 50;
+                int size = t.IsMain ? 76 : 60;
                 var body = new Rectangle((int)t.Pos.X - size / 2, (int)t.Pos.Y - size / 2, size, size);
-                var baseR = new Rectangle(body.X - 6, body.Bottom - 10, body.Width + 12, 14);
-                DrawRect(new Rectangle(baseR.X + 4, baseR.Y + 6, baseR.Width, baseR.Height), new Color(0, 0, 0, 45));
-                DrawRect(baseR, new Color(88, 88, 96));
-                DrawRect(body, new Color(165, 170, 180));
-                DrawRect(body, teamDark, 2);
-                var top = new Rectangle(body.X + 6, body.Y + 6, body.Width - 12, 12);
-                DrawRect(top, team);
-                DrawRect(new Rectangle(body.Center.X - 5, body.Y - 10, 10, 14), teamDark);
-                if (t.HitFlash > 0) DrawRect(body, new Color(255, 255, 255, 120));
+                DrawRect(new Rectangle(body.X + 8, body.Bottom - 4, body.Width, 8), new Color(0, 0, 0, 45));
+
+                if (_torretaTex != null)
+                {
+                    DrawTorretaSprite(body, team, t.HitFlash > 0);
+                }
+                else
+                {
+                    var baseR = new Rectangle(body.X - 6, body.Bottom - 10, body.Width + 12, 14);
+                    DrawRect(baseR, new Color(88, 88, 96));
+                    DrawRect(body, new Color(165, 170, 180));
+                    DrawRect(body, teamDark, 2);
+                    DrawRect(new Rectangle(body.X + 6, body.Y + 6, body.Width - 12, 12), team);
+                    DrawRect(new Rectangle(body.Center.X - 5, body.Y - 10, 10, 14), teamDark);
+                    if (t.HitFlash > 0) DrawRect(body, new Color(255, 255, 255, 120));
+                }
 
                 float pct = Math.Max(0, (float)t.Hp / t.MaxHp);
                 var hbg = new Rectangle(body.X - 8, body.Y - 16, body.Width + 16, 7);
@@ -1193,6 +1204,14 @@ namespace LumiaRoyale.Game
                 DrawRect(hfg, pct > 0.35f ? new Color(110, 220, 90) : new Color(230, 90, 70));
                 DrawRect(hbg, new Color(255, 255, 255, 70), 1);
             }
+        }
+
+        private void DrawTorretaSprite(Rectangle dst, Color team, bool hitFlash)
+        {
+            if (_torretaTex == null) return;
+            Color tint = Color.Lerp(Color.White, team, 0.32f);
+            if (hitFlash) tint = Color.Lerp(tint, Color.White, 0.7f);
+            _spriteBatch.Draw(_torretaTex, dst, tint);
         }
 
         private void DrawUnits()
@@ -1209,7 +1228,8 @@ namespace LumiaRoyale.Game
                     continue;
                 }
 
-                if (!DrawPunyUnit(u, team))
+                bool drawn = u.Def.Id == "pulso" ? DrawColossoSprite(u, team) : DrawPunyUnit(u, team);
+                if (!drawn)
                 {
                     if (u.Def.Id == "pulso") DrawColossus(u, team, dark);
                     else if (u.Def.Id == "enxame") DrawSwarm(u, team, dark);
@@ -1220,8 +1240,8 @@ namespace LumiaRoyale.Game
                     else DrawMelee(u, team, dark);
                 }
 
-                int hpW = u.Def.Id == "pulso" ? 40 : (u.Def.Id == "enxame" ? 18 : 28);
-                int hpY = u.Def.Id == "pulso" ? 34 : (u.Def.Id == "enxame" ? 14 : 22);
+                int hpW = u.Def.Id == "pulso" ? 64 : (u.Def.Id == "enxame" ? 28 : 44);
+                int hpY = u.Def.Id == "pulso" ? 56 : (u.Def.Id == "enxame" ? 30 : 46);
                 DrawHpBar((int)u.Pos.X - hpW / 2, (int)u.Pos.Y - hpY, hpW, 4, u.Hp, u.MaxHp);
             }
         }
@@ -1269,14 +1289,23 @@ namespace LumiaRoyale.Game
 
         private void DrawBuildingUnit(Unit u, Color team, Color dark)
         {
-            var b = new Rectangle((int)u.Pos.X - 14, (int)u.Pos.Y - 14, 28, 28);
-            DrawRect(new Rectangle(b.X + 3, b.Bottom - 1, b.Width, 4), new Color(0, 0, 0, 50));
-            DrawRect(b, new Color(140, 145, 155));
-            DrawRect(b, dark, 2);
-            DrawRect(new Rectangle(b.X + 4, b.Y + 4, b.Width - 8, 10), Color.Lerp(u.Def.Color, Color.Black, 0.2f));
-            DrawRect(new Rectangle(b.Center.X - 3, b.Y - 6, 6, 8), team);
-            if (u.AttackAnim > 0) DrawRect(new Rectangle(b.Center.X - 2, b.Y - 10, 4, 4), Color.White);
-            if (u.HitFlash > 0) DrawRect(b, new Color(255, 255, 255, 110));
+            var b = new Rectangle((int)u.Pos.X - 24, (int)u.Pos.Y - 24, 48, 48);
+            DrawRect(new Rectangle(b.X + 5, b.Bottom - 2, b.Width, 6), new Color(0, 0, 0, 50));
+
+            if (u.Def.Id == "torreta" && _torretaTex != null)
+            {
+                DrawTorretaSprite(b, team, u.HitFlash > 0);
+            }
+            else
+            {
+                DrawRect(b, new Color(140, 145, 155));
+                DrawRect(b, dark, 2);
+                DrawRect(new Rectangle(b.X + 4, b.Y + 4, b.Width - 8, 10), Color.Lerp(u.Def.Color, Color.Black, 0.2f));
+                DrawRect(new Rectangle(b.Center.X - 3, b.Y - 6, 6, 8), team);
+                if (u.AttackAnim > 0) DrawRect(new Rectangle(b.Center.X - 2, b.Y - 10, 4, 4), Color.White);
+                if (u.HitFlash > 0) DrawRect(b, new Color(255, 255, 255, 110));
+            }
+
             DrawHpBar(b.X - 2, b.Y - 11, b.Width + 4, 4, u.Hp, u.MaxHp);
             float lt = u.Def.Lifetime > 0 ? MathHelper.Clamp(u.LifeLeft / u.Def.Lifetime, 0, 1) : 0;
             DrawRect(new Rectangle(b.X - 2, b.Bottom + 5, b.Width + 4, 3), new Color(20, 20, 20, 160));
@@ -1341,8 +1370,35 @@ namespace LumiaRoyale.Game
             if (u.Def.Id == "dardo" || u.Def.Id == "eco") attackRow = 3; // arco
             else if (u.Def.Id == "faisca") attackRow = 4; // cajado
 
-            int size = u.Def.Id == "pulso" ? 52 : (u.Def.Id == "enxame" ? 28 : 40);
+            // Personagens 2x maiores que antes.
+            int size = u.Def.Id == "enxame" ? 56 : 80;
             DrawPunySprite(u, tex, attackRow, team, size);
+            return true;
+        }
+
+        private bool DrawColossoSprite(Unit u, Color team)
+        {
+            if (_colossoTex == null) return false;
+
+            Vector2 f = u.Facing;
+            if (f.LengthSquared() < 0.001f) f = new Vector2(0, 1);
+            f.Normalize();
+
+            // Colosso.png: 4 células de 32x32 -> [frente idle, frente ataque, costas idle, costas ataque].
+            bool back = f.Y < -0.35f;
+            int frame = u.AttackAnim > 0f ? 1 : 0;
+            int col = (back ? 2 : 0) + frame;
+            var src = new Rectangle(col * 32, 0, 32, 32);
+
+            int size = 104;
+            float bob = u.AttackAnim <= 0f && u.Def.Speed > 0f ? (float)Math.Sin(u.WalkPhase) * 1.6f : 0f;
+            var dst = new Rectangle((int)(u.Pos.X - size / 2f), (int)(u.Pos.Y - size / 2f + bob - 4), size, size);
+            DrawRect(new Rectangle(dst.X + 8, dst.Bottom - 8, dst.Width - 16, 6), new Color(0, 0, 0, 45));
+
+            Color tint = Color.Lerp(Color.White, team, 0.10f);
+            if (u.HitFlash > 0) tint = Color.Lerp(tint, Color.White, 0.75f);
+            var fx = f.X < -0.35f ? SpriteEffects.FlipHorizontally : SpriteEffects.None;
+            _spriteBatch.Draw(_colossoTex, dst, src, tint, 0f, Vector2.Zero, fx, 0f);
             return true;
         }
 
@@ -1353,7 +1409,6 @@ namespace LumiaRoyale.Game
             {
                 case "sentinela": return _punySoldierTex;
                 case "dardo": return _punyArcherTex;
-                case "pulso": return _punyWarriorTex;
                 case "faisca": return _punyMageTex;
                 case "enxame": return _punyArcherPurpleTex;
                 case "eco": return _punyMageRedTex;
@@ -1576,7 +1631,10 @@ namespace LumiaRoyale.Game
                 if (portraitTex != null)
                 {
                     // Frame idle de frente: direção S (grupo 4), frame do meio.
-                    var src = new Rectangle((PunyFrontDir * 3 + 1) * PunyCell, 0, PunyCell, PunyCell);
+                    // Colosso e Torreta têm sprites próprios (uma única pose de frente).
+                    var src = (def.Id == "pulso" || def.Id == "torreta")
+                        ? new Rectangle(0, 0, PunyCell, PunyCell)
+                        : new Rectangle((PunyFrontDir * 3 + 1) * PunyCell, 0, PunyCell, PunyCell);
                     _spriteBatch.Draw(portraitTex, prev, src, canAfford ? Color.White : new Color(150, 150, 150));
                 }
                 else if (def.Kind == CardKind.Spell)
@@ -1631,7 +1689,8 @@ namespace LumiaRoyale.Game
             {
                 case "sentinela": return _punySoldierTex;
                 case "dardo": return _punyArcherTex;
-                case "pulso": return _punyWarriorTex;
+                case "pulso": return _colossoTex;
+                case "torreta": return _torretaTex;
                 case "faisca": return _punyMageTex;
                 case "enxame": return _punyArcherPurpleTex;
                 case "eco": return _punyMageRedTex;

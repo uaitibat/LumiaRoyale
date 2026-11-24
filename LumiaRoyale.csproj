@@ -103,6 +103,8 @@
     <Content Include="Assets\Sprites\Puny\Mage-Cyan.png" />
     <Content Include="Assets\Sprites\Puny\Archer-Purple.png" />
     <Content Include="Assets\Sprites\Puny\Mage-Red.png" />
+    <Content Include="Assets\Sprites\Colosso.png" />
+    <Content Include="Assets\Sprites\Torreta.png" />
   </ItemGroup>
   <ItemGroup>
     <ApplicationDefinition Include="App.xaml"><Generator>MSBuild:Compile</Generator><SubType>Designer</SubType></ApplicationDefinition>

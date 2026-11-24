@@ -13,6 +13,7 @@ namespace LumiaRoyale.Game
         public int Damage;
         public float Cooldown;
         public float CooldownLeft;
+        public float HitFlash;
         public bool Alive => Hp > 0;
 
         public Tower(Vector2 pos, int hp, bool isMain, bool isEnemy)
@@ -24,6 +25,7 @@ namespace LumiaRoyale.Game
             Range = isMain ? 120f : 105f;
             Damage = isMain ? 24 : 18;
             Cooldown = 1.0f;
+            HitFlash = 0f;
         }
     }
 }

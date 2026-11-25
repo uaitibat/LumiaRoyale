@@ -10,6 +10,11 @@ permissions:
   actions: write
   contents: write
 
+# Evita duas builds disputando a mesma release "latest".
+concurrency:
+  group: build-appx-latest
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: windows-2022

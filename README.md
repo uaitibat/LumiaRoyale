@@ -11,7 +11,9 @@ Esqueleto inicial de um jogo original de arena com cartas para **Windows 10 Mobi
 - Resolução real da tela via `DisplayInformation.RawPixelsPerViewPixel` (sem hardcode 480x800)
 - Loop fixo ~30 FPS
 - Arena placeholder com 3 torres por lado
-- Mana, 4 cartas originais, unidades, combate básico e IA simples
+- Mana, coleção de 30 unidades originais (6 corpo a corpo, 5 atiradores, 4 tanques, 4 rápidas, 4 mágicas, 3 aéreas, 4 especiais) com deck de 8 escolhido na home
+- Combate básico, torres com nível, baús e IA (também na demonstração da home)
+- Sprites CC0: Puny Characters e Tiny Creatures (licença em `Assets/Sprites/Tiny/LICENSE.txt`)
 - CI GitHub Actions: compila ARM, assina com `certs/ci-legacy.b64` e publica `.appx` em `latest`
 
 ## Build CI

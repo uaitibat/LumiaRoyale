@@ -56,7 +56,10 @@ namespace LumiaRoyale.Game
         private readonly List<Fx> _fx = new List<Fx>();
         private readonly List<Projectile> _projectiles = new List<Projectile>();
         private readonly Random _rng = new Random();
+        private readonly CardDef[] _collection = CardDef.AllCards();
+        private readonly Dictionary<string, Texture2D> _sprites = new Dictionary<string, Texture2D>();
 
+        private string[] _deckIds = CardDef.StarterIds();
         private CardDef[] _deck;
         private CardDef[] _hand;
         private int _nextDraw;
@@ -96,7 +99,8 @@ namespace LumiaRoyale.Game
         private int[] _chestProgress = new int[4];
         private bool[] _chestOpened = new bool[4];
         private int _homeTab; // 0 = batalha, 1 = cartas
-        private int _selectedDeckCard = -1;
+        private int _selectedDeckCard = -1; // índice na coleção de 30, não no deck
+        private int _cardPage;
         private float _cardsSlide;   // 0 = painel fechado, 1 = aberto
         private bool _cardsDragging;
         private string _homeToast = "";
@@ -163,6 +167,13 @@ namespace LumiaRoyale.Game
             return false;
         }
 
+        private static string ReadString(IDictionary<string, object> values, string key)
+        {
+            object raw;
+            if (values.TryGetValue(key, out raw) && raw is string) return (string)raw;
+            return "";
+        }
+
         private bool IsChestReady(int i)
         {
             return i >= 0 && i < _chestProgress.Length && !_chestOpened[i] && _chestProgress[i] >= 3;
@@ -193,6 +204,21 @@ namespace LumiaRoyale.Game
             }
             for (int i = 0; i < _chestOpened.Length; i++)
                 _chestOpened[i] = ReadBool(v, "chestOpened" + i);
+
+            // Deck escolhido pelo jogador. Ids desconhecidos são descartados;
+            // saves antigos continuam com os 8 personagens originais.
+            var ids = new List<string>();
+            foreach (var part in ReadString(v, "deckIds").Split(','))
+            {
+                string id = part.Trim();
+                if (id.Length == 0 || ids.Contains(id)) continue;
+                if (CardDef.Find(_collection, id) == null) continue;
+                ids.Add(id);
+                if (ids.Count == 8) break;
+            }
+            if (ids.Count == 0) ids.AddRange(CardDef.StarterIds());
+            _deckIds = ids.ToArray();
+
             _towerLevel = TowerBalance.BaseLevel + _trophies / 150;
         }
 
@@ -209,6 +235,7 @@ namespace LumiaRoyale.Game
                 v["chestProgress" + i] = _chestProgress[i];
             for (int i = 0; i < _chestOpened.Length; i++)
                 v["chestOpened" + i] = _chestOpened[i];
+            v["deckIds"] = string.Join(",", _deckIds);
         }
 
         private void ShowHomeToast(string text)
@@ -264,6 +291,13 @@ namespace LumiaRoyale.Game
             _punyMageRedTex = LoadTex("Assets/Sprites/Puny/Mage-Red.png");
             _colossoTex = LoadTex("Assets/Sprites/Colosso.png");
             _torretaTex = LoadTex("Assets/Sprites/Torreta.png");
+            // Uma textura por caminho de sprite do catálogo de 30 unidades.
+            foreach (var def in _collection)
+            {
+                if (string.IsNullOrEmpty(def.Sprite) || _sprites.ContainsKey(def.Sprite)) continue;
+                var tex = LoadTex("Assets/Sprites/" + def.Sprite);
+                if (tex != null) _sprites[def.Sprite] = tex;
+            }
             _homeBgTex = LoadTex("Assets/HomeBackground.jpg");
             _homeBannerTex = LoadBannerTexture("Assets/HomeBanner.jpg");
         }
@@ -348,13 +382,25 @@ namespace LumiaRoyale.Game
             catch { return null; }
         }
 
+        private CardDef[] BuildBattleDeck()
+        {
+            var cards = new List<CardDef>();
+            for (int i = 0; i < _deckIds.Length; i++)
+            {
+                var def = CardDef.Find(_collection, _deckIds[i]);
+                if (def != null) cards.Add(def);
+            }
+            if (cards.Count == 0) cards.AddRange(CardDef.StarterDeck());
+            return cards.OrderBy(_ => _rng.Next()).ToArray();
+        }
+
         private void ResetMatch()
         {
             _units.Clear();
             _towers.Clear();
             _fx.Clear();
             _projectiles.Clear();
-            _deck = CardDef.StarterDeck().OrderBy(_ => _rng.Next()).ToArray();
+            _deck = BuildBattleDeck();
             _hand = new CardDef[4];
             for (int i = 0; i < 4; i++) _hand[i] = _deck[i % _deck.Length];
             _nextDraw = 4 % _deck.Length;
@@ -628,13 +674,51 @@ namespace LumiaRoyale.Game
                     }
                     if (_homeTab == 1)
                     {
-                        for (int i = 0; i < _deck.Length; i++)
+                        if (GetCardPageRect(false).Contains((int)p.X, (int)p.Y))
                         {
-                            if (GetHomeCardRect(i).Contains((int)p.X, (int)p.Y))
+                            _cardPage = Math.Max(0, _cardPage - 1);
+                            _selectedDeckCard = -1;
+                            return;
+                        }
+                        if (GetCardPageRect(true).Contains((int)p.X, (int)p.Y))
+                        {
+                            _cardPage = Math.Min(CardPageCount - 1, _cardPage + 1);
+                            _selectedDeckCard = -1;
+                            return;
+                        }
+                        for (int slot = 0; slot < 8; slot++)
+                        {
+                            int idx = _cardPage * 8 + slot;
+                            if (idx >= _collection.Length) break;
+                            if (!GetHomeCardRect(slot).Contains((int)p.X, (int)p.Y)) continue;
+
+                            var def = _collection[idx];
+                            _selectedDeckCard = idx;
+                            if (_deckIds.Contains(def.Id))
                             {
-                                _selectedDeckCard = _selectedDeckCard == i ? -1 : i;
-                                return;
+                                if (_deckIds.Length <= 1)
+                                {
+                                    ShowHomeToast("DECK PRECISA DE 1 CARTA");
+                                }
+                                else
+                                {
+                                    _deckIds = _deckIds.Where(x => x != def.Id).ToArray();
+                                    _deck = BuildBattleDeck();
+                                    SaveProgress();
+                                    ShowHomeToast(def.Name.ToUpperInvariant() + " RETIRADO");
+                                }
                             }
+                            else if (_deckIds.Length < 8)
+                            {
+                                var list = _deckIds.ToList();
+                                list.Add(def.Id);
+                                _deckIds = list.ToArray();
+                                _deck = BuildBattleDeck();
+                                SaveProgress();
+                                ShowHomeToast(def.Name.ToUpperInvariant() + " NO DECK");
+                            }
+                            else ShowHomeToast("DECK CHEIO: RETIRE UMA CARTA");
+                            return;
                         }
                         // Toque fora do painel (inclusive na arena) fecha o painel.
                         if (!GetCardsPanelRect().Contains((int)p.X, (int)p.Y)) _homeTab = 0;
@@ -867,13 +951,23 @@ namespace LumiaRoyale.Game
             return new Rectangle(x, HY(84), w, n.Y - HY(92));
         }
 
-        private Rectangle GetHomeCardRect(int index)
+        private int CardPageCount => (_collection.Length + 7) / 8;
+
+        private Rectangle GetCardPageRect(bool next)
+        {
+            var p = GetCardsPanelRect();
+            int w = next ? HX(58) : HX(48);
+            int x = next ? p.Right - HX(70) : p.Right - HX(126);
+            return new Rectangle(x, p.Y + HY(7), w, HY(28));
+        }
+
+        private Rectangle GetHomeCardRect(int slot)
         {
             var p = GetCardsPanelRect();
             int cw = (p.Width - HX(36)) / 2;
             int ch = HY(106);
-            int col = index % 2;
-            int row = index / 2;
+            int col = slot % 2;
+            int row = slot / 2;
             return new Rectangle(p.X + HX(12) + col * (cw + HX(12)),
                                  p.Y + HY(46) + row * (ch + HY(8)), cw, ch);
         }
@@ -910,7 +1004,7 @@ namespace LumiaRoyale.Game
         private bool IsValidDeploy(CardDef card, Vector2 pos, bool enemy)
         {
             if (!_arenaRect.Contains((int)pos.X, (int)pos.Y)) return false;
-            if (card.Kind == CardKind.Spell) return true;
+            if (card.SpellEffect) return true;
 
             int midY = _arenaRect.Center.Y + 20;
             bool onOwnSide = enemy ? pos.Y <= midY : pos.Y >= midY;
@@ -925,7 +1019,7 @@ namespace LumiaRoyale.Game
         {
             pos.X = MathHelper.Clamp(pos.X, _arenaRect.Left + 15, _arenaRect.Right - 15);
             pos.Y = MathHelper.Clamp(pos.Y, _arenaRect.Top + 15, _arenaRect.Bottom - 15);
-            if (card.Kind == CardKind.Spell)
+            if (card.SpellEffect)
             {
                 CastSpell(card, pos, enemy);
                 return;
@@ -944,7 +1038,7 @@ namespace LumiaRoyale.Game
                     spawnPos.Y = MathHelper.Clamp(spawnPos.Y, _arenaRect.Top + 15, _arenaRect.Bottom - 15);
                 }
                 _units.Add(new Unit(card, spawnPos, enemy, laneX));
-                AddFx(spawnPos, card.Color, card.Kind == CardKind.Building ? 18f : (count > 1 ? 10f : 14f), 0.22f, "spawn");
+                AddFx(spawnPos, card.Color, card.Structure ? 18f : (count > 1 ? 10f : 14f), 0.22f, "spawn");
             }
         }
 
@@ -1006,7 +1100,7 @@ namespace LumiaRoyale.Game
             var enemyUnits = _units.Where(u => u.IsEnemy && u.Alive).ToList();
 
             // Spell: use on cluster of player units
-            var spell = affordable.Where(c => c.Kind == CardKind.Spell).OrderByDescending(c => c.Cost).FirstOrDefault();
+            var spell = affordable.Where(c => c.SpellEffect).OrderByDescending(c => c.Cost).FirstOrDefault();
             if (spell != null)
             {
                 Vector2 cluster = FindClusterCenter(playerUnits, spell.AreaRadius);
@@ -1020,26 +1114,26 @@ namespace LumiaRoyale.Game
             {
                 Vector2 threatCenter = AveragePos(threats);
                 int nearCount = CountNear(playerUnits, threatCenter, 90f);
-                bool hasColossusThreat = threats.Any(u => u.Def.Id == "pulso");
+                bool hasColossusThreat = threats.Any(u => u.Def.TargetsBuildingsOnly);
 
-                var building = affordable.FirstOrDefault(c => c.Kind == CardKind.Building);
+                var building = affordable.FirstOrDefault(c => c.Structure);
                 if (building != null && (nearCount >= 1 || hasColossusThreat) && !enemyUnits.Any(u => u.IsBuilding && Vector2.Distance(u.Pos, threatCenter) < 140f))
                     return building;
 
                 if (hasColossusThreat)
                 {
-                    var swarm = affordable.FirstOrDefault(c => c.Id == "enxame");
+                    var swarm = affordable.FirstOrDefault(c => c.Swarm);
                     if (swarm != null) return swarm;
                 }
 
                 if (nearCount >= 2)
                 {
-                    var splashOrRanged = affordable.FirstOrDefault(c => c.Kind == CardKind.Ranged && c.Cost >= 2);
+                    var splashOrRanged = affordable.FirstOrDefault(c => c.UsesProjectile && c.Cost >= 2);
                     if (splashOrRanged != null) return splashOrRanged;
                 }
 
                 var counter = affordable
-                    .Where(c => c.Kind == CardKind.Melee || c.Kind == CardKind.Ranged)
+                    .Where(c => !c.SpellEffect && !c.Structure && c.Hp > 0)
                     .OrderByDescending(c => c.Hp)
                     .FirstOrDefault();
                 if (counter != null) return counter;
@@ -1049,7 +1143,7 @@ namespace LumiaRoyale.Game
             if (_enemyMana >= 6f || playerUnits.Count <= 1)
             {
                 var push = affordable
-                    .Where(c => c.Kind == CardKind.Melee || c.Kind == CardKind.Ranged)
+                    .Where(c => !c.SpellEffect && !c.Structure && c.Hp > 0)
                     .OrderByDescending(c => c.Cost)
                     .FirstOrDefault();
                 if (push != null) return push;
@@ -1057,7 +1151,7 @@ namespace LumiaRoyale.Game
 
             // Default: cheapest non-spell, or random affordable
             return affordable
-                .OrderBy(c => c.Kind == CardKind.Spell ? 10 : 0)
+                .OrderBy(c => c.SpellEffect ? 10 : 0)
                 .ThenBy(c => c.Cost)
                 .FirstOrDefault();
         }
@@ -1068,7 +1162,7 @@ namespace LumiaRoyale.Game
             float rightX = _arenaRect.Left + _arenaRect.Width * 0.75f;
             var playerUnits = _units.Where(u => !u.IsEnemy && u.Alive).ToList();
 
-            if (card.Kind == CardKind.Spell)
+            if (card.SpellEffect)
             {
                 Vector2 cluster = FindClusterCenter(playerUnits, card.AreaRadius);
                 if (cluster != Vector2.Zero) return cluster;
@@ -1092,7 +1186,7 @@ namespace LumiaRoyale.Game
 
             // Se alguma lateral do jogador caiu, às vezes ataca pelo bolso (da ponte até a torre).
             var pockets = GetDeployPockets(true);
-            bool canPocket = pockets.Count > 0 && card.Kind != CardKind.Building && _enemyMana >= 5f;
+            bool canPocket = pockets.Count > 0 && !card.Structure && _enemyMana >= 5f;
             if (canPocket && _rng.NextDouble() < 0.45)
             {
                 var p = pockets[_rng.Next(pockets.Count)];
@@ -1102,7 +1196,7 @@ namespace LumiaRoyale.Game
             }
 
             float y;
-            if (card.Kind == CardKind.Building)
+            if (card.Structure)
             {
                 y = _arenaRect.Center.Y - 70f - (float)_rng.NextDouble() * 40f;
             }
@@ -1135,7 +1229,7 @@ namespace LumiaRoyale.Game
             _fx.Clear();
             _projectiles.Clear();
             if (_deck == null || _deck.Length == 0)
-                _deck = CardDef.StarterDeck().OrderBy(_ => _rng.Next()).ToArray();
+                _deck = BuildBattleDeck();
             BuildTowers();
             _mana = 5f;
             _enemyMana = 5f;
@@ -1208,7 +1302,7 @@ namespace LumiaRoyale.Game
             var own = _units.Where(u => u.IsEnemy == sideIsEnemy && u.Alive).ToList();
 
             // Magia em cima de agrupamentos inimigos.
-            var spell = affordable.Where(c => c.Kind == CardKind.Spell)
+            var spell = affordable.Where(c => c.SpellEffect)
                                   .OrderByDescending(c => c.Cost).FirstOrDefault();
             if (spell != null)
             {
@@ -1224,24 +1318,24 @@ namespace LumiaRoyale.Game
             {
                 Vector2 center = AveragePos(threats);
                 int near = CountNear(foes, center, 90f);
-                bool colossus = threats.Any(u => u.Def.Id == "pulso");
+                bool colossus = threats.Any(u => u.Def.TargetsBuildingsOnly);
 
-                var building = affordable.FirstOrDefault(c => c.Kind == CardKind.Building);
+                var building = affordable.FirstOrDefault(c => c.Structure);
                 if (building != null && (near >= 1 || colossus) &&
                     !own.Any(u => u.IsBuilding && Vector2.Distance(u.Pos, center) < 140f))
                     return building;
 
                 if (colossus)
                 {
-                    var swarm = affordable.FirstOrDefault(c => c.Id == "enxame");
+                    var swarm = affordable.FirstOrDefault(c => c.Swarm);
                     if (swarm != null) return swarm;
                 }
                 if (near >= 2)
                 {
-                    var ranged = affordable.FirstOrDefault(c => c.Kind == CardKind.Ranged && c.Cost >= 2);
+                    var ranged = affordable.FirstOrDefault(c => c.UsesProjectile && c.Cost >= 2);
                     if (ranged != null) return ranged;
                 }
-                var counter = affordable.Where(c => c.Kind == CardKind.Melee || c.Kind == CardKind.Ranged)
+                var counter = affordable.Where(c => !c.SpellEffect && !c.Structure && c.Hp > 0)
                                         .OrderByDescending(c => c.Hp).FirstOrDefault();
                 if (counter != null) return counter;
             }
@@ -1249,11 +1343,11 @@ namespace LumiaRoyale.Game
             // Ataque: com vantagem de mana ou poucos inimigos, investe numa lane.
             if (mana >= 6f || foes.Count <= 1)
             {
-                var push = affordable.Where(c => c.Kind == CardKind.Melee || c.Kind == CardKind.Ranged)
+                var push = affordable.Where(c => !c.SpellEffect && !c.Structure && c.Hp > 0)
                                      .OrderByDescending(c => c.Cost).FirstOrDefault();
                 if (push != null) return push;
             }
-            return affordable.OrderBy(c => c.Kind == CardKind.Spell ? 10 : 0)
+            return affordable.OrderBy(c => c.SpellEffect ? 10 : 0)
                              .ThenBy(c => c.Cost).FirstOrDefault();
         }
 
@@ -1263,7 +1357,7 @@ namespace LumiaRoyale.Game
             float rightX = _arenaRect.Left + _arenaRect.Width * 0.75f;
             var foes = _units.Where(u => u.IsEnemy != sideIsEnemy && u.Alive).ToList();
 
-            if (card.Kind == CardKind.Spell)
+            if (card.SpellEffect)
             {
                 Vector2 cluster = FindClusterCenter(foes, card.AreaRadius);
                 if (cluster != Vector2.Zero) return cluster;
@@ -1290,7 +1384,7 @@ namespace LumiaRoyale.Game
 
             // Bolso avançado quando uma torre lateral adversária caiu.
             var pockets = GetDeployPockets(sideIsEnemy);
-            bool canPocket = pockets.Count > 0 && card.Kind != CardKind.Building && mana >= 5f;
+            bool canPocket = pockets.Count > 0 && !card.Structure && mana >= 5f;
             if (canPocket && _rng.NextDouble() < 0.45)
             {
                 var p = pockets[_rng.Next(pockets.Count)];
@@ -1300,7 +1394,7 @@ namespace LumiaRoyale.Game
             }
 
             float y;
-            if (card.Kind == CardKind.Building)
+            if (card.Structure)
             {
                 float offset = 70f + (float)_rng.NextDouble() * 40f;
                 y = sideIsEnemy ? _arenaRect.Center.Y - offset : _arenaRect.Center.Y + offset;
@@ -1399,7 +1493,7 @@ namespace LumiaRoyale.Game
                     if (u.AttackTimer <= 0f)
                     {
                         u.AttackAnim = 0.14f;
-                        if (u.Def.Kind == CardKind.Ranged)
+                        if (u.Def.UsesProjectile)
                         {
                             SpawnProjectile(u, target.Value);
                         }
@@ -1480,7 +1574,7 @@ namespace LumiaRoyale.Game
         private bool CanPush(Unit u)
         {
             // avoid pushing units out of valid river crossings too aggressively
-            return !u.IsBuilding;
+            return !u.IsBuilding && !u.Def.Flying;
         }
 
         private void SpawnProjectile(Unit u, TargetInfo target)
@@ -1630,6 +1724,7 @@ namespace LumiaRoyale.Game
         {
             u.Pos.X = MathHelper.Clamp(u.Pos.X, _arenaRect.Left + 12, _arenaRect.Right - 12);
             u.Pos.Y = MathHelper.Clamp(u.Pos.Y, _arenaRect.Top + 12, _arenaRect.Bottom - 12);
+            if (u.Def.Flying) return; // aéreas cruzam o rio fora das pontes
 
             float bridgeY = _arenaRect.Center.Y;
             float riverTop = bridgeY - 14f;
@@ -1671,7 +1766,7 @@ namespace LumiaRoyale.Game
         {
             TargetInfo? best = null;
             float bestScore = float.MaxValue;
-            bool buildingOnly = u.Def.Id == "pulso"; // Colosso targets only buildings/towers
+            bool buildingOnly = u.Def.TargetsBuildingsOnly; // Colosso targets only buildings/towers
             var laneTower = GetSideTowerInLane(!u.IsEnemy, u.LaneX);
             bool laneOpen = laneTower == null || !laneTower.Alive;
 
@@ -1740,6 +1835,8 @@ namespace LumiaRoyale.Game
 
         private Vector2 GetMoveTarget(Unit u, TargetInfo target)
         {
+            if (u.Def.Flying) return target.pos;
+
             float bridgeY = _arenaRect.Center.Y;
             float riverTop = bridgeY - 14f;
             float riverBottom = bridgeY + 14f;
@@ -2036,7 +2133,7 @@ namespace LumiaRoyale.Game
         {
             if (_selectedHand < 0 || _matchState != "playing") return;
             var card = _hand[_selectedHand];
-            if (card.Kind == CardKind.Spell)
+            if (card.SpellEffect)
             {
                 DrawRect(_arenaRect, SpawnAreaFill);
                 DrawRect(_arenaRect, SpawnAreaBorder, 2);
@@ -2200,20 +2297,19 @@ namespace LumiaRoyale.Game
                     continue;
                 }
 
-                bool drawn = u.Def.Id == "pulso" ? DrawColossoSprite(u, team) : DrawPunyUnit(u, team);
+                bool drawn = DrawUnitSprite(u, team);
                 if (!drawn)
                 {
-                    if (u.Def.Id == "pulso") DrawColossus(u, team, dark);
-                    else if (u.Def.Id == "enxame") DrawSwarm(u, team, dark);
-                    else if (u.Def.Id == "eco") DrawEco(u, team, dark);
-                    else if (u.Def.Kind == CardKind.Ranged && u.Def.Id == "dardo") DrawArcher(u, team, dark);
-                    else if (u.Def.Kind == CardKind.Ranged && u.Def.Id == "faisca") DrawPunyMage(u, team, dark);
-                    else if (u.Def.Kind == CardKind.Ranged) DrawRanged(u, team, dark);
+                    if (u.Def.TargetsBuildingsOnly) DrawColossus(u, team, dark);
+                    else if (u.Def.Swarm) DrawSwarm(u, team, dark);
+                    else if (u.Def.Kind == CardKind.Magic || u.Def.AreaRadius > 0f) DrawEco(u, team, dark);
+                    else if (u.Def.UsesProjectile) DrawRanged(u, team, dark);
                     else DrawMelee(u, team, dark);
                 }
 
-                int hpW = u.Def.Id == "pulso" ? 64 : (u.Def.Id == "enxame" ? 28 : 44);
-                int hpY = u.Def.Id == "pulso" ? 56 : (u.Def.Id == "enxame" ? 30 : 46);
+                bool big = u.Def.TargetsBuildingsOnly || u.Def.Kind == CardKind.Tank;
+                int hpW = big ? 64 : (u.Def.Swarm ? 28 : 44);
+                int hpY = big ? 56 : (u.Def.Swarm ? 30 : 46);
                 DrawHpBar((int)u.Pos.X - hpW / 2, (int)u.Pos.Y - hpY, hpW, 4, u.Hp, u.MaxHp);
                 if (!u.IsEnemy) DrawAimHint(u);
             }
@@ -2295,9 +2391,14 @@ namespace LumiaRoyale.Game
             var b = new Rectangle((int)u.Pos.X - 24, (int)u.Pos.Y - 24, 48, 48);
             DrawRect(new Rectangle(b.X + 5, b.Bottom - 2, b.Width, 6), new Color(0, 0, 0, 50));
 
-            if (u.Def.Id == "torreta" && _torretaTex != null)
+            Texture2D tex = GetCardTexture(u.Def);
+            if (tex != null && u.Def.Sprite == "Torreta.png" && _torretaTex != null)
             {
                 DrawTorretaSprite(b, team, u.HitFlash > 0);
+            }
+            else if (tex != null)
+            {
+                DrawTinySprite(u, tex, team);
             }
             else
             {
@@ -2370,11 +2471,11 @@ namespace LumiaRoyale.Game
             if (tex == null) return false;
 
             int attackRow = 2; // espada
-            if (u.Def.Id == "dardo" || u.Def.Id == "eco") attackRow = 3; // arco
-            else if (u.Def.Id == "faisca") attackRow = 4; // cajado
+            if (u.Def.Kind == CardKind.Magic) attackRow = 4; // cajado
+            else if (u.Def.UsesProjectile) attackRow = 3; // arco
 
             // Personagens 2x maiores que antes.
-            int size = u.Def.Id == "enxame" ? 56 : 80;
+            int size = u.Def.Swarm ? 56 : (u.Def.Kind == CardKind.Tank ? 92 : 80);
             DrawPunySprite(u, tex, attackRow, team, size);
             return true;
         }
@@ -2405,18 +2506,58 @@ namespace LumiaRoyale.Game
             return true;
         }
 
+        private Texture2D GetCardTexture(CardDef def)
+        {
+            Texture2D tex;
+            if (def != null && !string.IsNullOrEmpty(def.Sprite) && _sprites.TryGetValue(def.Sprite, out tex))
+                return tex;
+            return null;
+        }
+
         private Texture2D GetUnitSpriteTexture(CardDef def)
         {
-            // Reaproveita o mesmo mapa das cartas para os personagens dentro da arena.
-            switch (def.Id)
-            {
-                case "sentinela": return _punySoldierTex;
-                case "dardo": return _punyArcherTex;
-                case "faisca": return _punyMageTex;
-                case "enxame": return _punyArcherPurpleTex;
-                case "eco": return _punyMageRedTex;
-                default: return null;
-            }
+            return GetCardTexture(def);
+        }
+
+        private Rectangle GetCardPortraitSource(CardDef def)
+        {
+            string sp = def.Sprite ?? "";
+            if (sp.StartsWith("Puny/"))
+                return new Rectangle((PunyFrontDir * 3 + 1) * PunyCell, 0, PunyCell, PunyCell);
+            return new Rectangle(0, 0, PunyCell, PunyCell);
+        }
+
+        // Desenha qualquer sprite novo do catálogo (Tiny Creatures / arte própria).
+        private bool DrawTinySprite(Unit u, Texture2D tex, Color team)
+        {
+            if (tex == null) return false;
+
+            int size = u.Def.Swarm ? 40 : (u.Def.TargetsBuildingsOnly || u.Def.Kind == CardKind.Tank || u.Def.Kind == CardKind.Air ? 56 : 52);
+            float bob = u.Def.Flying
+                ? (float)Math.Sin(_animTime * 5f + u.WalkPhase) * 4f
+                : (u.Def.Speed > 0.01f ? (float)Math.Sin(u.WalkPhase) * 1.5f : 0f);
+            var dst = new Rectangle((int)(u.Pos.X - size / 2f), (int)(u.Pos.Y - size / 2f + bob - 2), size, size);
+            DrawRect(new Rectangle(dst.X + 6, dst.Bottom - 5, dst.Width - 12, 4), new Color(0, 0, 0, 45));
+
+            Color tint = Color.Lerp(Color.White, team, 0.10f);
+            if (u.HitFlash > 0) tint = Color.Lerp(tint, Color.White, 0.75f);
+            var fx = u.Facing.X < -0.35f ? SpriteEffects.FlipHorizontally : SpriteEffects.None;
+            var src = new Rectangle(0, 0, tex.Width, tex.Height);
+            _spriteBatch.Draw(tex, dst, src, tint, 0f, Vector2.Zero, fx, 0f);
+            if (u.AttackAnim > 0) DrawRect(dst, new Color(255, 255, 255, 45));
+            return true;
+        }
+
+        private bool DrawUnitSprite(Unit u, Color team)
+        {
+            Texture2D tex = GetCardTexture(u.Def);
+            if (tex == null) return false;
+
+            string sp = u.Def.Sprite ?? "";
+            if (sp.StartsWith("Puny/")) return DrawPunyUnit(u, team);
+            if (sp == "Colosso.png") return DrawColossoSprite(u, team);
+            if (sp.StartsWith("Tiny/") || sp == "arqueira_back.png") return DrawTinySprite(u, tex, team);
+            return false; // construções são desenhadas por DrawBuildingUnit
         }
 
         private void DrawPunySprite(Unit u, Texture2D tex, int attackRow, Color team, int size)
@@ -2690,21 +2831,19 @@ namespace LumiaRoyale.Game
                 Texture2D portraitTex = GetCardPortraitTexture(def);
                 if (portraitTex != null)
                 {
-                    // Frame idle de frente: direção S (grupo 4), frame do meio.
-                    // Colosso e Torreta têm sprites próprios (uma única pose de frente).
-                    var src = (def.Id == "pulso" || def.Id == "torreta")
-                        ? new Rectangle(0, 0, PunyCell, PunyCell)
-                        : new Rectangle((PunyFrontDir * 3 + 1) * PunyCell, 0, PunyCell, PunyCell);
+                    // Sheets Puny usam o frame idle de frente; os demais sprites
+                    // (Colosso, Torreta, Tiny) têm uma única pose.
+                    var src = GetCardPortraitSource(def);
                     _spriteBatch.Draw(portraitTex, prev, src, canAfford ? Color.White : new Color(150, 150, 150));
                 }
-                else if (def.Kind == CardKind.Spell)
+                else if (def.SpellEffect)
                 {
                     DrawRect(new Rectangle(prev.X - 2, prev.Y - 2, prev.Width + 4, prev.Height + 4), new Color(255, 255, 255, 20), 1);
                     DrawRect(new Rectangle(prev.Center.X - 6, prev.Center.Y - 6, 12, 12), def.Color);
                     DrawRect(new Rectangle(prev.Center.X - 2, prev.Center.Y - 10, 4, 20), Color.White * 0.3f);
                     DrawRect(new Rectangle(prev.Center.X - 10, prev.Center.Y - 2, 20, 4), Color.White * 0.3f);
                 }
-                else if (def.Kind == CardKind.Building)
+                else if (def.Structure)
                 {
                     DrawRect(new Rectangle(prev.X, prev.Bottom - 4, prev.Width, 4), new Color(80, 80, 90));
                     DrawRect(prev, new Color(150, 155, 165));
@@ -2727,7 +2866,7 @@ namespace LumiaRoyale.Game
                     DrawRect(prev, def.Color);
                     DrawRect(new Rectangle(prev.X + 3, prev.Y + 3, prev.Width - 6, 5), Color.White * 0.2f);
                     DrawRect(prev, Color.White * 0.5f, 1);
-                    if (def.Kind == CardKind.Ranged)
+                    if (def.UsesProjectile)
                         DrawRect(new Rectangle(prev.Center.X - 2, prev.Center.Y - 2, 4, 4), new Color(255, 255, 255, 220));
                 }
 
@@ -2745,17 +2884,7 @@ namespace LumiaRoyale.Game
 
         private Texture2D GetCardPortraitTexture(CardDef def)
         {
-            switch (def.Id)
-            {
-                case "sentinela": return _punySoldierTex;
-                case "dardo": return _punyArcherTex;
-                case "pulso": return _colossoTex;
-                case "torreta": return _torretaTex;
-                case "faisca": return _punyMageTex;
-                case "enxame": return _punyArcherPurpleTex;
-                case "eco": return _punyMageRedTex;
-                default: return null;
-            }
+            return GetCardTexture(def);
         }
 
         private void DrawCostPips(Rectangle costR, int cost)
@@ -3128,26 +3257,28 @@ namespace LumiaRoyale.Game
                 DrawRect(new Rectangle(x, p.Y + 2, 2, HY(30)),
                          Color.Lerp(Se98TitleA, Se98TitleB, (x - p.X) / (float)p.Width));
             DrawPixelText("CARTAS", p.X + HX(12), p.Y + HY(6), 3, Color.White);
-            DrawPixelText("ARRASTE PARA FECHAR", p.Right - HX(92), p.Y + HY(12), 1,
-                          new Color(150, 170, 205));
+            DrawPixelText("PAG " + (_cardPage + 1) + "/" + CardPageCount, p.Right - HX(200), p.Y + HY(12), 2,
+                          new Color(180, 200, 230));
+            DrawBeveledButton(GetCardPageRect(false), "ANT", false, 2);
+            DrawBeveledButton(GetCardPageRect(true), "PROX", false, 2);
 
-            for (int i = 0; i < _deck.Length; i++)
+            for (int slot = 0; slot < 8; slot++)
             {
-                var c = GetHomeCardRect(i);
-                var def = _deck[i];
-                bool sel = _selectedDeckCard == i;
-                DrawBeveledPanel(c, sel);
+                int idx = _cardPage * 8 + slot;
+                if (idx >= _collection.Length) break;
+                var c = GetHomeCardRect(slot);
+                var def = _collection[idx];
+                bool sel = _selectedDeckCard == idx;
+                bool inDeck = _deckIds.Contains(def.Id);
+                DrawBeveledPanel(c, sel || inDeck);
                 DrawRect(new Rectangle(c.X + 2, c.Y + 2, c.Width - 4, c.Height - 4),
-                         sel ? new Color(16, 32, 80) : new Color(18, 24, 42));
+                         sel ? new Color(16, 32, 80) : inDeck ? new Color(18, 48, 42) : new Color(18, 24, 42));
                 DrawRect(new Rectangle(c.X + 2, c.Y + 2, c.Width - 4, HY(4)), def.Color);
 
                 var tex = GetCardPortraitTexture(def);
                 var portrait = new Rectangle(c.X + HX(8), c.Y + HY(12), HX(62), HY(62));
                 if (tex != null)
-                {
-                    var src = new Rectangle((PunyFrontDir * 3 + 1) * PunyCell, 0, PunyCell, PunyCell);
-                    _spriteBatch.Draw(tex, portrait, src, Color.White);
-                }
+                    _spriteBatch.Draw(tex, portrait, GetCardPortraitSource(def), Color.White);
                 else
                 {
                     DrawRect(portrait, def.Color);
@@ -3162,30 +3293,36 @@ namespace LumiaRoyale.Game
                 string name = def.Name.ToUpperInvariant();
                 if (name.Length > 12) name = name.Substring(0, 12);
                 DrawPixelText(name, c.X + HX(76), c.Y + HY(14), 2, Color.White);
-                DrawPixelText(def.Kind.ToString().ToUpperInvariant(), c.X + HX(76), c.Y + HY(36), 2,
+                DrawPixelText(CardDef.CategoryLabel(def.Kind), c.X + HX(76), c.Y + HY(36), 2,
                               new Color(180, 200, 230));
                 DrawPixelText("DMG " + def.Damage + "  VIDA " + def.Hp, c.X + HX(8), c.Y + HY(84), 2,
                               Se98Face);
+                DrawPixelText(inDeck ? "DECK" : "FORA", c.Right - HX(40), c.Y + HY(96), 1,
+                              inDeck ? new Color(170, 255, 190) : new Color(130, 140, 160));
             }
 
             var d = new Rectangle(p.X + HX(12), p.Y + HY(506), p.Width - HX(24), HY(118));
             DrawBeveledPanel(d, true);
             DrawRect(new Rectangle(d.X + 2, d.Y + 2, d.Width - 4, d.Height - 4), new Color(12, 18, 36));
-            if (_selectedDeckCard >= 0 && _selectedDeckCard < _deck.Length)
+            if (_selectedDeckCard >= 0 && _selectedDeckCard < _collection.Length)
             {
-                var def = _deck[_selectedDeckCard];
+                var def = _collection[_selectedDeckCard];
+                bool inDeck = _deckIds.Contains(def.Id);
                 DrawPixelText(def.Name.ToUpperInvariant(), d.X + HX(10), d.Y + HY(8), 3, Color.White);
                 DrawPixelText("CUSTO " + def.Cost + "  DMG " + def.Damage + "  VIDA " + def.Hp,
                               d.X + HX(10), d.Y + HY(38), 2, new Color(255, 220, 130));
                 DrawPixelText("ALCANCE " + (int)def.Range + "  VEL " + (int)def.Speed,
                               d.X + HX(10), d.Y + HY(62), 2, Se98Face);
-                DrawPixelText(def.Kind.ToString().ToUpperInvariant(), d.X + HX(10), d.Y + HY(86), 2,
+                DrawPixelText(CardDef.CategoryLabel(def.Kind), d.X + HX(10), d.Y + HY(86), 2,
                               new Color(180, 200, 230));
+                DrawPixelText(inDeck ? "TOQUE PARA RETIRAR" : "TOQUE PARA ADICIONAR",
+                              d.Right - HX(150), d.Y + HY(86), 2,
+                              inDeck ? new Color(170, 255, 190) : new Color(150, 170, 205));
             }
             else
             {
-                DrawPixelText("TOQUE EM UMA CARTA", d.X + HX(10), d.Y + HY(12), 2, Se98Face);
-                DrawPixelText("VEJA CUSTO, DANO E VIDA", d.X + HX(10), d.Y + HY(40), 2,
+                DrawPixelText("30 UNIDADES - DECK DE 8", d.X + HX(10), d.Y + HY(12), 2, Se98Face);
+                DrawPixelText("TOQUE PARA MONTAR SEU DECK", d.X + HX(10), d.Y + HY(40), 2,
                               new Color(150, 170, 205));
             }
         }

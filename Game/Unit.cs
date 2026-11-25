@@ -20,7 +20,7 @@ namespace LumiaRoyale.Game
         public Vector2 AimPos;
         public bool HasAim;
         public bool AimIsStructure;
-        public bool IsBuilding => Def.Kind == CardKind.Building;
+        public bool IsBuilding => Def.Structure;
         public bool Alive => Hp > 0 && (!IsBuilding || LifeLeft > 0f);
         public float Radius => GetRadius();
 
@@ -45,9 +45,11 @@ namespace LumiaRoyale.Game
         private float GetRadius()
         {
             if (IsBuilding) return 20f;
-            if (Def.Id == "pulso") return 24f;
-            if (Def.Id == "enxame") return 10f;
-            return Def.Kind == CardKind.Melee ? 16f : 14f;
+            if (Def.TargetsBuildingsOnly) return 24f;
+            if (Def.Swarm) return 10f;
+            if (Def.Kind == CardKind.Tank) return 20f;
+            if (Def.Kind == CardKind.Melee || Def.Kind == CardKind.Fast) return 14f;
+            return 12f;
         }
     }
 }

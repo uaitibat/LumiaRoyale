@@ -77,6 +77,7 @@
   <ItemGroup>
     <Compile Include="App.xaml.cs"><DependentUpon>App.xaml</DependentUpon></Compile>
     <Compile Include="Pages\GamePage.xaml.cs"><DependentUpon>GamePage.xaml</DependentUpon></Compile>
+    <Compile Include="Game\ArenaDef.cs" />
     <Compile Include="Game\ArenaGame.cs" />
     <Compile Include="Game\CardDef.cs" />
     <Compile Include="Game\Unit.cs" />
@@ -118,6 +119,7 @@
     <Content Include="Assets\Sprites\Puny\Warrior-Red.png" />
     <Content Include="Assets\Sprites\Colosso.png" />
     <Content Include="Assets\Sprites\Torreta.png" />
+    <Content Include="Assets\ArenaDesert.png" />
     <Content Include="Assets\ArenaForest.png" />
     <Content Include="Assets\ArenaForest.jpg" />
     <Content Include="Assets\HomeBanner.jpg" />

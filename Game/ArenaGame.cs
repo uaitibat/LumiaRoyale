@@ -29,21 +29,38 @@ namespace LumiaRoyale.Game
         private Texture2D _homeBgTex;
         private Texture2D _homeBannerTex;
 
-        // Proporções medidas no cenário (rio e pontes) para a lógica casar com a arte.
-        private const float ArenaRiverHalfNorm = 0.060f;
-        private const float ArenaBridgeHalfNorm = 0.068f;
-
         // Versão exibida na home para confirmar qual APPX está instalado.
-        private const string BuildTag = "V 1.0.5";
+        private const string BuildTag = "V 1.1.0";
+
+        private ArenaDef _arenaDef;
+        private string _arenaId = "vale";
+        private readonly Dictionary<string, Texture2D> _arenaTextures = new Dictionary<string, Texture2D>();
+        private bool _arenaPickerOpen;
+        private int _arenaPage;
+
+        private ArenaDef CurrentArena
+        {
+            get { return _arenaDef ?? ArenaDef.All[0]; }
+        }
 
         private float RiverHalf
         {
-            get { return _arenaBgTex != null ? _arenaRect.Height * ArenaRiverHalfNorm : 14f; }
+            get { return _arenaBgTex != null ? _arenaRect.Height * CurrentArena.RiverHalfNorm : 14f; }
         }
 
         private float BridgeHalf
         {
-            get { return _arenaBgTex != null ? _arenaRect.Width * ArenaBridgeHalfNorm : 24f; }
+            get { return _arenaBgTex != null ? _arenaRect.Width * CurrentArena.BridgeHalfNorm : 24f; }
+        }
+
+        private float LaneLeftX
+        {
+            get { return _arenaRect.Left + _arenaRect.Width * CurrentArena.LaneLeftNorm; }
+        }
+
+        private float LaneRightX
+        {
+            get { return _arenaRect.Left + _arenaRect.Width * CurrentArena.LaneRightNorm; }
         }
 
         private float _animTime;
@@ -237,6 +254,11 @@ namespace LumiaRoyale.Game
             if (ids.Count == 0) ids.AddRange(CardDef.StarterIds());
             _deckIds = ids.ToArray();
 
+            // Arena escolhida pelo jogador; se o save citar um mapa que não
+            // existe mais, volta para o primeiro.
+            _arenaDef = ArenaDef.Find(ReadString(v, "arenaId")) ?? ArenaDef.All[0];
+            _arenaId = _arenaDef.Id;
+
             _towerLevel = TowerBalance.BaseLevel + _trophies / 150;
         }
 
@@ -254,12 +276,60 @@ namespace LumiaRoyale.Game
             for (int i = 0; i < _chestOpened.Length; i++)
                 v["chestOpened" + i] = _chestOpened[i];
             v["deckIds"] = string.Join(",", _deckIds);
+            v["arenaId"] = _arenaId;
         }
 
         private void ShowHomeToast(string text)
         {
             _homeToast = text;
             _homeToastTimer = 2.2f;
+        }
+
+        private void HandleArenaPickerTap(Vector2 p)
+        {
+            int start = _arenaPage * ArenasPerPage;
+            for (int slot = 0; slot < ArenasPerPage; slot++)
+            {
+                int idx = start + slot;
+                if (idx >= ArenaDef.All.Length) break;
+                if (!GetArenaCardRect(slot).Contains((int)p.X, (int)p.Y)) continue;
+                SelectArena(ArenaDef.All[idx]);
+                return;
+            }
+
+            if (ArenaPageCount > 1)
+            {
+                if (GetArenaPageRect(false).Contains((int)p.X, (int)p.Y))
+                {
+                    _arenaPage = Math.Max(0, _arenaPage - 1);
+                    return;
+                }
+                if (GetArenaPageRect(true).Contains((int)p.X, (int)p.Y))
+                {
+                    _arenaPage = Math.Min(ArenaPageCount - 1, _arenaPage + 1);
+                    return;
+                }
+            }
+
+            if (GetArenaCloseRect().Contains((int)p.X, (int)p.Y) ||
+                !GetArenaPickerRect().Contains((int)p.X, (int)p.Y))
+                _arenaPickerOpen = false;
+        }
+
+        private void SelectArena(ArenaDef def)
+        {
+            if (def == null) return;
+
+            _arenaDef = def;
+            _arenaId = def.Id;
+            _arenaBgTex = GetArenaTexture(def);
+            _arenaPickerOpen = false;
+            SaveProgress();
+
+            // A demo da home é reiniciada para jogar no cenário escolhido;
+            // a partida normal passa a usar a mesma textura na próxima abertura.
+            DemoReset();
+            ShowHomeToast(def.Name + " SELECIONADA");
         }
 
         // Cada vitória enche o baú; abrir dá troféus. Nível das torres segue os troféus.
@@ -321,6 +391,43 @@ namespace LumiaRoyale.Game
             // PNG primeiro: neste W10M JPEG basico gerado externamente falha em decoder.
             _homeBgTex = LoadTex("Assets/HomeBackground.png") ?? LoadTex("Assets/HomeBackground.jpg");
             _homeBannerTex = LoadBannerTexture("Assets/HomeBanner.jpg");
+
+            // Carrega todos os cenários de uma vez (são poucos) para a troca
+            // na home e no combate ser instantânea.
+            foreach (var arena in ArenaDef.All)
+            {
+                var tex = LoadTex(arena.Asset);
+                if (tex != null) _arenaTextures[arena.Id] = tex;
+            }
+            if (_arenaDef == null) _arenaDef = ArenaDef.All[0];
+            _arenaBgTex = GetArenaTexture(_arenaDef);
+            if (_arenaBgTex == null)
+            {
+                // Se o mapa salvo não carregou, usa o primeiro disponível.
+                foreach (var arena in ArenaDef.All)
+                {
+                    var tex = GetArenaTexture(arena);
+                    if (tex == null) continue;
+                    _arenaDef = arena;
+                    _arenaId = arena.Id;
+                    _arenaBgTex = tex;
+                    break;
+                }
+            }
+
+            // Sem cenário em imagem, a textura procedural é a reserva.
+            if (_arenaBgTex != null && _arenaTex != null)
+            {
+                _arenaTex.Dispose();
+                _arenaTex = null;
+            }
+        }
+
+        private Texture2D GetArenaTexture(ArenaDef def)
+        {
+            Texture2D tex;
+            if (def != null && _arenaTextures.TryGetValue(def.Id, out tex)) return tex;
+            return null;
         }
 
         // Estandarte/estampa de bandeira: foto espelhada, ponta em "<" e moldura embutida.
@@ -458,8 +565,8 @@ namespace LumiaRoyale.Game
 
         private void BuildTowers()
         {
-            float leftLaneX = _arenaRect.Left + _arenaRect.Width * 0.25f;
-            float rightLaneX = _arenaRect.Left + _arenaRect.Width * 0.75f;
+            float leftLaneX = LaneLeftX;
+            float rightLaneX = LaneRightX;
             float centerX = _arenaRect.Left + _arenaRect.Width * 0.5f;
 
             int sideHp = TowerBalance.SideHp(_towerLevel);
@@ -660,6 +767,8 @@ namespace LumiaRoyale.Game
                 // Arrastar da borda esquerda abre o painel de cartas; arrastar de volta fecha.
                 if (_matchState == "home")
                 {
+                    // Seletor de arena é modal: não abre/fecha o painel de cartas.
+                    if (_arenaPickerOpen) continue;
                     if (g.GestureType == GestureType.HorizontalDrag)
                     {
                         _cardsDragging = true;
@@ -689,6 +798,12 @@ namespace LumiaRoyale.Game
 
                 if (_matchState == "home")
                 {
+                    if (_arenaPickerOpen)
+                    {
+                        HandleArenaPickerTap(p);
+                        return;
+                    }
+
                     // Aba "cartas": painel lateral; toque na aba "batalha" volta.
                     if (GetNavCardsRect().Contains((int)p.X, (int)p.Y))
                     {
@@ -750,6 +865,17 @@ namespace LumiaRoyale.Game
                         }
                         // Toque fora do painel (inclusive na arena) fecha o painel.
                         if (!GetCardsPanelRect().Contains((int)p.X, (int)p.Y)) _homeTab = 0;
+                        return;
+                    }
+
+                    // Tocar na mini arena abre o seletor de cenários.
+                    if (GetHomeArenaRect().Contains((int)p.X, (int)p.Y))
+                    {
+                        int current = 0;
+                        for (int i = 0; i < ArenaDef.All.Length; i++)
+                            if (ArenaDef.All[i].Id == _arenaId) { current = i; break; }
+                        _arenaPage = Math.Min(ArenaPageCount - 1, current / ArenasPerPage);
+                        _arenaPickerOpen = true;
                         return;
                     }
 
@@ -955,6 +1081,39 @@ namespace LumiaRoyale.Game
             return new Rectangle(a.X + (bw + HX(8)) * 2, a.Bottom + HY(4), bw, HY(48));
         }
 
+        // Seletor de arena (modal aberto ao tocar na mini arena da home).
+        private const int ArenasPerPage = 2;
+
+        private int ArenaPageCount { get { return (ArenaDef.All.Length + ArenasPerPage - 1) / ArenasPerPage; } }
+
+        private Rectangle GetArenaPickerRect()
+        {
+            return new Rectangle(HX(24), HY(130), HX(432), HY(470));
+        }
+
+        private Rectangle GetArenaCardRect(int slot)
+        {
+            var p = GetArenaPickerRect();
+            int cardW = (p.Width - HX(36)) / 2;
+            return new Rectangle(p.X + HX(12) + slot * (cardW + HX(12)),
+                                 p.Y + HY(50), cardW, HY(310));
+        }
+
+        private Rectangle GetArenaCloseRect()
+        {
+            var p = GetArenaPickerRect();
+            int w = HX(150);
+            return new Rectangle(p.Center.X - w / 2, p.Bottom - HY(50), w, HY(38));
+        }
+
+        private Rectangle GetArenaPageRect(bool next)
+        {
+            var p = GetArenaPickerRect();
+            int w = next ? HX(58) : HX(48);
+            int x = next ? p.Right - HX(70) : p.X + HX(12);
+            return new Rectangle(x, p.Bottom - HY(50), w, HY(38));
+        }
+
         private Rectangle GetHomeChestRect(int index)
         {
             var buttons = GetHomePlayRect();
@@ -1083,8 +1242,8 @@ namespace LumiaRoyale.Game
 
         private float GetLaneX(float x)
         {
-            float left = _arenaRect.Left + _arenaRect.Width * 0.25f;
-            float right = _arenaRect.Left + _arenaRect.Width * 0.75f;
+            float left = LaneLeftX;
+            float right = LaneRightX;
             return Math.Abs(x - left) <= Math.Abs(x - right) ? left : right;
         }
 
@@ -1197,8 +1356,8 @@ namespace LumiaRoyale.Game
 
         private Vector2 ChooseEnemyPos(CardDef card)
         {
-            float leftX = _arenaRect.Left + _arenaRect.Width * 0.25f;
-            float rightX = _arenaRect.Left + _arenaRect.Width * 0.75f;
+            float leftX = LaneLeftX;
+            float rightX = LaneRightX;
             var playerUnits = _units.Where(u => !u.IsEnemy && u.Alive).ToList();
 
             if (card.SpellEffect)
@@ -1392,8 +1551,8 @@ namespace LumiaRoyale.Game
 
         private Vector2 DemoChoosePos(CardDef card, float mana, bool sideIsEnemy)
         {
-            float leftX = _arenaRect.Left + _arenaRect.Width * 0.25f;
-            float rightX = _arenaRect.Left + _arenaRect.Width * 0.75f;
+            float leftX = LaneLeftX;
+            float rightX = LaneRightX;
             var foes = _units.Where(u => u.IsEnemy != sideIsEnemy && u.Alive).ToList();
 
             if (card.SpellEffect)
@@ -1771,8 +1930,8 @@ namespace LumiaRoyale.Game
             bool inRiver = u.Pos.Y > riverTop && u.Pos.Y < riverBottom;
             if (!inRiver) return;
 
-            float leftBridge = _arenaRect.Left + _arenaRect.Width * 0.25f;
-            float rightBridge = _arenaRect.Left + _arenaRect.Width * 0.75f;
+            float leftBridge = LaneLeftX;
+            float rightBridge = LaneRightX;
             float bridgeHalf = BridgeHalf;
             bool onBridge = Math.Abs(u.Pos.X - leftBridge) <= bridgeHalf || Math.Abs(u.Pos.X - rightBridge) <= bridgeHalf;
             if (onBridge) return;
@@ -1883,8 +2042,8 @@ namespace LumiaRoyale.Game
             bool onEnemySide = u.IsEnemy ? u.Pos.Y > riverBottom : u.Pos.Y < riverTop;
             bool targetOnOtherSide = u.IsEnemy ? target.pos.Y > riverBottom : target.pos.Y < riverTop;
 
-            float left = _arenaRect.Left + _arenaRect.Width * 0.25f;
-            float right = _arenaRect.Left + _arenaRect.Width * 0.75f;
+            float left = LaneLeftX;
+            float right = LaneRightX;
             float laneX = u.LaneX;
 
             // Pick bridge lane for crossing
@@ -2070,8 +2229,8 @@ namespace LumiaRoyale.Game
             if (_arenaTex != null && _arenaTex.Width == w && _arenaTex.Height == h) return;
             if (_arenaTex != null) _arenaTex.Dispose();
 
-            float leftLane = w * 0.25f;
-            float rightLane = w * 0.75f;
+            float leftLane = w * CurrentArena.LaneLeftNorm;
+            float rightLane = w * CurrentArena.LaneRightNorm;
             var data = new Color[w * h];
             for (int y = 0; y < h; y++)
             {
@@ -2134,8 +2293,8 @@ namespace LumiaRoyale.Game
                 DrawRect(new Rectangle(x + 6, river.Y + 18 - oy, 10, 2), new Color(200, 232, 255, 70));
             }
 
-            DrawBridge(_arenaRect.Left + _arenaRect.Width / 4);
-            DrawBridge(_arenaRect.Left + 3 * _arenaRect.Width / 4);
+            DrawBridge((int)LaneLeftX);
+            DrawBridge((int)LaneRightX);
 
             // center line hint
             DrawRect(new Rectangle(_arenaRect.Left, _arenaRect.Center.Y + 18, _arenaRect.Width, 2), new Color(255, 255, 255, 35));
@@ -2162,7 +2321,7 @@ namespace LumiaRoyale.Game
             else
             {
                 int sh = Math.Min(tex.Height, Math.Max(1, (int)(tex.Width / destAspect)));
-                int cy = (int)(tex.Height * 0.4927f); // centro do rio na imagem
+                int cy = (int)(tex.Height * CurrentArena.RiverNorm); // centro do rio na imagem
                 int sy = cy - sh / 2;
                 if (sy < 0) sy = 0;
                 if (sy + sh > tex.Height) sy = tex.Height - sh;
@@ -2181,7 +2340,7 @@ namespace LumiaRoyale.Game
 
             int vw = GraphicsDevice.Viewport.Width;
             int vh = GraphicsDevice.Viewport.Height;
-            const float riverNorm = 0.4927f;
+            float riverNorm = CurrentArena.RiverNorm;
             float cy = _arenaRect.Center.Y;
 
             float scale = Math.Max(vw / (float)tex.Width, vh / (float)tex.Height);
@@ -3166,6 +3325,7 @@ namespace LumiaRoyale.Game
             DrawHomeNav();
 
             if (_cardsSlide > 0.01f) DrawHomeCardsPanel();
+            if (_arenaPickerOpen) DrawArenaPicker();
 
             if (_homeToastTimer > 0f && !string.IsNullOrEmpty(_homeToast))
             {
@@ -3228,7 +3388,7 @@ namespace LumiaRoyale.Game
             DrawRect(t, new Color(150, 180, 220), 1);
             DrawRect(new Rectangle(t.X + 4, t.Bottom - 4, t.Width - 8, 2), new Color(10, 36, 106));
 
-            const string title = "ARENA 1 - VALE DO VOID";
+            string title = CurrentArena.Title;
             DrawPixelText(title, t.Center.X - title.Length * 4, t.Y + 8, 2, Color.White);
         }
 
@@ -3271,6 +3431,81 @@ namespace LumiaRoyale.Game
             }
 
             DrawRect(r, new Color(8, 12, 26, 90), 3);
+        }
+
+        private void DrawArenaPicker()
+        {
+            int vw = GraphicsDevice.Viewport.Width;
+            int vh = GraphicsDevice.Viewport.Height;
+            DrawRect(new Rectangle(0, 0, vw, vh), new Color(0, 0, 0, 175));
+
+            var p = GetArenaPickerRect();
+            DrawBeveledPanel(p, false);
+            DrawRect(new Rectangle(p.X + 2, p.Y + 2, p.Width - 4, p.Height - 4), new Color(10, 14, 26));
+
+            for (int x = p.X + 2; x < p.Right - 2; x += 2)
+                DrawRect(new Rectangle(x, p.Y + 2, 2, HY(34)),
+                         Color.Lerp(Se98TitleA, Se98TitleB, (x - p.X) / (float)p.Width));
+            DrawPixelText("ARENAS", p.X + HX(12), p.Y + HY(9), 3, Color.White);
+            DrawPixelText("TOQUE PARA ESCOLHER", p.Right - HX(168), p.Y + HY(14), 2,
+                          new Color(180, 200, 230));
+
+            int start = _arenaPage * ArenasPerPage;
+            for (int slot = 0; slot < ArenasPerPage; slot++)
+            {
+                int idx = start + slot;
+                if (idx >= ArenaDef.All.Length) break;
+                var def = ArenaDef.All[idx];
+                var c = GetArenaCardRect(slot);
+                bool sel = def.Id == _arenaId;
+
+                DrawBeveledPanel(c, sel);
+                DrawRect(new Rectangle(c.X + 2, c.Y + 2, c.Width - 4, c.Height - 4),
+                         new Color(16, 22, 38));
+
+                var thumb = new Rectangle(c.X + HX(6), c.Y + HY(6), c.Width - HX(12), HY(150));
+                DrawArenaThumb(GetArenaTexture(def), def, thumb);
+                DrawRect(thumb, new Color(150, 180, 220), 1);
+
+                string num = "ARENA " + def.Number;
+                DrawPixelText(num, c.Center.X - num.Length * 4, thumb.Bottom + HY(8), 2,
+                              new Color(170, 195, 230));
+                DrawPixelText(def.Name, c.Center.X - def.Name.Length * 4, thumb.Bottom + HY(28), 2,
+                              Color.White);
+
+                if (sel)
+                {
+                    var badge = new Rectangle(c.X + HX(10), c.Bottom - HY(30), c.Width - HX(20), HY(20));
+                    DrawRect(badge, new Color(12, 40, 112));
+                    DrawRect(badge, new Color(255, 220, 130), 1);
+                    DrawPixelText("ATUAL", c.Center.X - 5 * 4, c.Bottom - HY(26), 2,
+                                  new Color(255, 230, 150));
+                }
+            }
+
+            if (ArenaPageCount > 1)
+            {
+                DrawBeveledButton(GetArenaPageRect(false), "ANT", false, 2);
+                DrawBeveledButton(GetArenaPageRect(true), "PROX", false, 2);
+            }
+            DrawBeveledButton(GetArenaCloseRect(), "FECHAR", false, 2);
+        }
+
+        private void DrawArenaThumb(Texture2D tex, ArenaDef def, Rectangle dest)
+        {
+            if (tex == null)
+            {
+                DrawRect(dest, new Color(40, 80, 60));
+                return;
+            }
+
+            // Faixa horizontal centrada no rio: mostra as duas pontes na miniatura.
+            int sh = Math.Min(tex.Height, Math.Max(1, (int)(tex.Width * dest.Height / (float)dest.Width)));
+            int cy = (int)(tex.Height * def.RiverNorm);
+            int sy = cy - sh / 2;
+            if (sy < 0) sy = 0;
+            if (sy + sh > tex.Height) sy = tex.Height - sh;
+            _spriteBatch.Draw(tex, dest, new Rectangle(0, sy, tex.Width, sh), Color.White);
         }
 
         private void DrawHomeTopBar()

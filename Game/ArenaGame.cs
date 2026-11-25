@@ -30,7 +30,7 @@ namespace LumiaRoyale.Game
         private Texture2D _homeBannerTex;
 
         // Versão exibida na home para confirmar qual APPX está instalado.
-        private const string BuildTag = "V 1.1.2";
+        private const string BuildTag = "V 1.1.3";
 
         private ArenaDef _arenaDef;
         private string _arenaId = "vale";
@@ -1354,6 +1354,50 @@ namespace LumiaRoyale.Game
                 .FirstOrDefault();
         }
 
+        // Escolhe a lane do bot sem depender só do adversário: defende se houver
+        // ameaça, apoia o próprio avanço, mira a torre mais fraca e quebra o
+        // empate com aleatoriedade (antes o empate sempre caía na esquerda).
+        private int ChooseAiLane(bool sideIsEnemy, List<Unit> foes, List<Unit> own)
+        {
+            float leftX = LaneLeftX;
+            float rightX = LaneRightX;
+            float laneHalf = Math.Abs(rightX - leftX) * 0.45f;
+            float centerY = _arenaRect.Center.Y;
+
+            int foeLeft = foes.Count(u => Math.Abs(u.Pos.X - leftX) < laneHalf &&
+                                          (sideIsEnemy ? u.Pos.Y < centerY : u.Pos.Y > centerY));
+            int foeRight = foes.Count(u => Math.Abs(u.Pos.X - rightX) < laneHalf &&
+                                           (sideIsEnemy ? u.Pos.Y < centerY : u.Pos.Y > centerY));
+            int ownLeft = own.Count(u => Math.Abs(u.Pos.X - leftX) < laneHalf &&
+                                         (sideIsEnemy ? u.Pos.Y > centerY : u.Pos.Y < centerY));
+            int ownRight = own.Count(u => Math.Abs(u.Pos.X - rightX) < laneHalf &&
+                                          (sideIsEnemy ? u.Pos.Y > centerY : u.Pos.Y < centerY));
+
+            var towerLeft = _towers.FirstOrDefault(t => t.IsEnemy != sideIsEnemy && !t.IsMain && t.Alive &&
+                                                       Math.Abs(t.Pos.X - leftX) < 20f);
+            var towerRight = _towers.FirstOrDefault(t => t.IsEnemy != sideIsEnemy && !t.IsMain && t.Alive &&
+                                                        Math.Abs(t.Pos.X - rightX) < 20f);
+            int hpLeft = towerLeft != null ? towerLeft.Hp : 99999;
+            int hpRight = towerRight != null ? towerRight.Hp : 99999;
+
+            float left = 0f;
+            float right = 0f;
+            if (foeLeft > 0 || foeRight > 0)
+            {
+                if (foeRight > foeLeft) right += 10f;
+                else if (foeLeft > foeRight) left += 10f;
+                else { left += 5f; right += 5f; }
+            }
+            left += Math.Min(3, ownLeft) * 1.5f;
+            right += Math.Min(3, ownRight) * 1.5f;
+            if (hpRight < hpLeft) right += 1.5f;
+            else if (hpLeft < hpRight) left += 1.5f;
+
+            left += (float)_rng.NextDouble() * 1.2f;
+            right += (float)_rng.NextDouble() * 1.2f;
+            return right > left ? 1 : 0;
+        }
+
         private Vector2 ChooseEnemyPos(CardDef card)
         {
             float leftX = LaneLeftX;
@@ -1368,19 +1412,9 @@ namespace LumiaRoyale.Game
                 return tower != null ? tower.Pos : new Vector2(_arenaRect.Center.X, _arenaRect.Bottom - 120);
             }
 
-            // Pick lane with most threat, or weak player tower
-            float laneX = leftX;
-            int leftThreat = playerUnits.Count(u => Math.Abs(u.Pos.X - leftX) < _arenaRect.Width * 0.3f);
-            int rightThreat = playerUnits.Count(u => Math.Abs(u.Pos.X - rightX) < _arenaRect.Width * 0.3f);
-            if (rightThreat > leftThreat) laneX = rightX;
-            else if (rightThreat == leftThreat)
-            {
-                var pl = _towers.FirstOrDefault(t => !t.IsEnemy && !t.IsMain && t.Alive && Math.Abs(t.Pos.X - leftX) < 20f);
-                var pr = _towers.FirstOrDefault(t => !t.IsEnemy && !t.IsMain && t.Alive && Math.Abs(t.Pos.X - rightX) < 20f);
-                int lh = pl != null ? pl.Hp : 99999;
-                int rh = pr != null ? pr.Hp : 99999;
-                laneX = rh < lh ? rightX : leftX;
-            }
+            var enemyUnits = _units.Where(u => u.IsEnemy && u.Alive).ToList();
+            int lane = ChooseAiLane(true, playerUnits, enemyUnits);
+            float laneX = lane == 0 ? leftX : rightX;
 
             // Se alguma lateral do jogador caiu, às vezes ataca pelo bolso (da ponte até a torre).
             var pockets = GetDeployPockets(true);
@@ -1565,20 +1599,9 @@ namespace LumiaRoyale.Game
                     sideIsEnemy ? _arenaRect.Bottom - 120f : _arenaRect.Top + 120f);
             }
 
-            float laneX = leftX;
-            int leftThreat = foes.Count(u => Math.Abs(u.Pos.X - leftX) < _arenaRect.Width * 0.3f);
-            int rightThreat = foes.Count(u => Math.Abs(u.Pos.X - rightX) < _arenaRect.Width * 0.3f);
-            if (rightThreat > leftThreat) laneX = rightX;
-            else if (rightThreat == leftThreat)
-            {
-                var tl = _towers.FirstOrDefault(t => t.IsEnemy != sideIsEnemy && !t.IsMain && t.Alive &&
-                                                     Math.Abs(t.Pos.X - leftX) < 20f);
-                var tr = _towers.FirstOrDefault(t => t.IsEnemy != sideIsEnemy && !t.IsMain && t.Alive &&
-                                                     Math.Abs(t.Pos.X - rightX) < 20f);
-                int lh = tl != null ? tl.Hp : 99999;
-                int rh = tr != null ? tr.Hp : 99999;
-                laneX = rh < lh ? rightX : leftX;
-            }
+            var own = _units.Where(u => u.IsEnemy == sideIsEnemy && u.Alive).ToList();
+            int lane = ChooseAiLane(sideIsEnemy, foes, own);
+            float laneX = lane == 0 ? leftX : rightX;
 
             // Bolso avançado quando uma torre lateral adversária caiu.
             var pockets = GetDeployPockets(sideIsEnemy);

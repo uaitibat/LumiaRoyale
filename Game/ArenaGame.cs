@@ -247,7 +247,7 @@ namespace LumiaRoyale.Game
             _homeBannerTex = LoadBannerTexture("Assets/HomeBanner.jpg");
         }
 
-        // Espelha a foto e recorta a ponta direita em "<" (bandeira).
+        // Estandarte/estampa de bandeira: foto espelhada, ponta em "<" e moldura embutida.
         private Texture2D LoadBannerTexture(string relativePath)
         {
             var src = LoadTex(relativePath);
@@ -260,16 +260,38 @@ namespace LumiaRoyale.Game
             for (int y = 0; y < h; y++)
                 for (int x = 0; x < w; x++)
                     data[y * w + x] = raw[y * w + (w - 1 - x)];
+
             int notch = Math.Max(24, w / 5);
             float half = h / 2f;
+            var cuts = new int[h];
             for (int y = 0; y < h; y++)
             {
                 int cut = w - notch + (int)(notch * Math.Abs(y - half) / half);
-                if (cut < 0) cut = 0;
-                if (cut > w) cut = w;
-                for (int x = cut; x < w; x++)
-                    data[y * w + x] = new Color(data[y * w + x].R, data[y * w + x].G, data[y * w + x].B, (byte)0);
+                cuts[y] = Math.Max(0, Math.Min(w, cut));
             }
+
+            for (int y = 0; y < h; y++)
+            {
+                int cut = cuts[y];
+                for (int x = 0; x < w; x++)
+                {
+                    if (x >= cut)
+                    {
+                        data[y * w + x] = new Color(0, 0, 0, 0);
+                        continue;
+                    }
+                    bool border = x < 3 || y < 3 || y >= h - 3 || x >= cut - 3;
+                    bool shine = !border && (x < 6 || y < 6 || y >= h - 6 || x >= cut - 6);
+                    if (border)
+                        data[y * w + x] = new Color(18, 24, 38);
+                    else if (shine)
+                    {
+                        var c = data[y * w + x];
+                        data[y * w + x] = new Color(ClampByte(c.R + 40), ClampByte(c.G + 48), ClampByte(c.B + 60));
+                    }
+                }
+            }
+
             var tex = new Texture2D(GraphicsDevice, w, h);
             tex.SetData(data);
             return tex;
@@ -2631,13 +2653,17 @@ namespace LumiaRoyale.Game
         {
             var b = GetHomeBannerRect();
             if (_homeBannerTex != null)
+            {
+                // Sombra acompanha o corte da bandeira.
+                _spriteBatch.Draw(_homeBannerTex, new Rectangle(b.X + 5, b.Y + 5, b.Width, b.Height),
+                                  new Color(0, 0, 0, 150));
                 _spriteBatch.Draw(_homeBannerTex, b, Color.White);
+            }
             else
             {
                 DrawRect(b, new Color(20, 34, 70));
                 DrawRect(b, new Color(120, 160, 220), 2);
             }
-            DrawRect(new Rectangle(b.X, b.Bottom - 4, b.Width - 40, 4), new Color(0, 0, 0, 120));
 
             var nick = GetHomeNickRect();
             DrawRect(new Rectangle(nick.X, nick.Y, nick.Width, nick.Height), new Color(8, 12, 26, 200));

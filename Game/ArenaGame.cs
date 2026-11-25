@@ -30,7 +30,7 @@ namespace LumiaRoyale.Game
         private Texture2D _homeBannerTex;
 
         // Versão exibida na home para confirmar qual APPX está instalado.
-        private const string BuildTag = "V 1.1.1";
+        private const string BuildTag = "V 1.1.2";
 
         private ArenaDef _arenaDef;
         private string _arenaId = "vale";
@@ -3202,6 +3202,15 @@ namespace LumiaRoyale.Game
             }
         }
 
+        // Texto com a borda direita fixa: novos dígitos aparecem à esquerda,
+        // mantendo a unidade sempre na mesma coluna.
+        private void DrawPixelTextRight(string text, int rightX, int y, int scale, Color c)
+        {
+            if (string.IsNullOrEmpty(text)) return;
+            int adv = 4 * Math.Max(1, scale);
+            DrawPixelText(text, rightX - text.Length * adv, y, scale, c);
+        }
+
         private static bool TryGetGlyph(char ch, out int[] rows)
         {
             // 3x5 glyphs, each row 3 bits (bit2 left)
@@ -3357,8 +3366,14 @@ namespace LumiaRoyale.Game
             DrawRect(new Rectangle(nick.X, nick.Y, nick.Width, nick.Height), new Color(8, 12, 26, 200));
             DrawBeveledPanel(nick, true);
             DrawPixelText("UAITI", nick.X + 16, nick.Y + 10, 3, Color.White);
-            DrawPixelText("COROAS " + _crowns, nick.Right - 16 - 11 * 6, nick.Y + 10, 3,
-                          new Color(255, 220, 130));
+            const int crownScale = 3;
+            const int charW = 4 * crownScale;
+            const string label = "COROAS";
+            Color crownColor = new Color(255, 220, 130);
+
+            int labelX = nick.Right - 16 - label.Length * charW;
+            DrawPixelTextRight(_crowns.ToString(), labelX - charW, nick.Y + 10, crownScale, crownColor);
+            DrawPixelText(label, labelX, nick.Y + 10, crownScale, crownColor);
         }
 
         private void DrawHomeControls()

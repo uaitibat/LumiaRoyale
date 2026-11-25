@@ -91,6 +91,8 @@ namespace LumiaRoyale.Game
         private bool[] _chestOpened = new bool[4];
         private int _homeTab; // 0 = batalha, 1 = cartas
         private int _selectedDeckCard = -1;
+        private float _cardsSlide;   // 0 = painel fechado, 1 = aberto
+        private bool _cardsDragging;
         private string _homeToast = "";
         private float _homeToastTimer;
 
@@ -132,7 +134,7 @@ namespace LumiaRoyale.Game
 
         protected override void Initialize()
         {
-            TouchPanel.EnabledGestures = GestureType.Tap;
+            TouchPanel.EnabledGestures = GestureType.Tap | GestureType.HorizontalDrag | GestureType.DragComplete;
             base.Initialize();
             LoadProgress();
             ResetMatch();
@@ -245,15 +247,19 @@ namespace LumiaRoyale.Game
             _homeBannerTex = LoadBannerTexture("Assets/HomeBanner.jpg");
         }
 
-        // Recorta a ponta direita do banner em forma de "<" (bandeira).
+        // Espelha a foto e recorta a ponta direita em "<" (bandeira).
         private Texture2D LoadBannerTexture(string relativePath)
         {
             var src = LoadTex(relativePath);
             if (src == null) return null;
             int w = src.Width;
             int h = src.Height;
+            var raw = new Color[w * h];
+            src.GetData(raw);
             var data = new Color[w * h];
-            src.GetData(data);
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                    data[y * w + x] = raw[y * w + (w - 1 - x)];
             int notch = Math.Max(24, w / 5);
             float half = h / 2f;
             for (int y = 0; y < h; y++)
@@ -399,6 +405,11 @@ namespace LumiaRoyale.Game
         private void UpdateFx(float dt)
         {
             _animTime += dt;
+            if (!_cardsDragging)
+            {
+                float target = _homeTab == 1 ? 1f : 0f;
+                _cardsSlide += (target - _cardsSlide) * Math.Min(1f, dt * 12f);
+            }
             for (int i = _fx.Count - 1; i >= 0; i--)
             {
                 var f = _fx[i];
@@ -502,6 +513,27 @@ namespace LumiaRoyale.Game
             while (TouchPanel.IsGestureAvailable)
             {
                 var g = TouchPanel.ReadGesture();
+
+                // Arrastar da borda esquerda abre o painel de cartas; arrastar de volta fecha.
+                if (_matchState == "home")
+                {
+                    if (g.GestureType == GestureType.HorizontalDrag)
+                    {
+                        _cardsDragging = true;
+                        _cardsSlide = MathHelper.Clamp(_cardsSlide + g.Delta.X / (float)Math.Max(1, HX(400)), 0f, 1f);
+                        continue;
+                    }
+                    if (g.GestureType == GestureType.DragComplete)
+                    {
+                        if (_cardsDragging)
+                        {
+                            _homeTab = _cardsSlide >= 0.5f ? 1 : 0;
+                            _cardsDragging = false;
+                        }
+                        continue;
+                    }
+                }
+
                 if (g.GestureType != GestureType.Tap) continue;
                 var p = g.Position;
 
@@ -527,11 +559,6 @@ namespace LumiaRoyale.Game
                     }
                     if (_homeTab == 1)
                     {
-                        if (GetCardsPanelCloseRect().Contains((int)p.X, (int)p.Y))
-                        {
-                            _homeTab = 0;
-                            return;
-                        }
                         for (int i = 0; i < _deck.Length; i++)
                         {
                             if (GetHomeCardRect(i).Contains((int)p.X, (int)p.Y))
@@ -540,6 +567,8 @@ namespace LumiaRoyale.Game
                                 return;
                             }
                         }
+                        // Toque fora do painel (inclusive na arena) fecha o painel.
+                        if (!GetCardsPanelRect().Contains((int)p.X, (int)p.Y)) _homeTab = 0;
                         return;
                     }
 
@@ -683,9 +712,10 @@ namespace LumiaRoyale.Game
 
         private Rectangle GetHomeBannerRect()
         {
-            int w = HX(334);
-            int h = HY(188);
-            return new Rectangle(GraphicsDevice.Viewport.Width / 2 - w / 2, HY(92), w, h);
+            // Bandeira retangular na esquerda (X maior que Y).
+            int w = HX(300);
+            int h = HY(150);
+            return new Rectangle(HX(14), HY(94), w, h);
         }
 
         private Rectangle GetHomeNickRect()
@@ -751,24 +781,20 @@ namespace LumiaRoyale.Game
         private Rectangle GetCardsPanelRect()
         {
             var n = GetNavRect();
-            return new Rectangle(0, HY(84), HX(400), n.Y - HY(92));
-        }
-
-        private Rectangle GetCardsPanelCloseRect()
-        {
-            var p = GetCardsPanelRect();
-            return new Rectangle(p.Right - HX(68), p.Y + HY(6), HX(56), HY(30));
+            int w = HX(400);
+            int x = -(int)(w * (1f - _cardsSlide));
+            return new Rectangle(x, HY(84), w, n.Y - HY(92));
         }
 
         private Rectangle GetHomeCardRect(int index)
         {
             var p = GetCardsPanelRect();
             int cw = (p.Width - HX(36)) / 2;
-            int ch = HY(102);
+            int ch = HY(106);
             int col = index % 2;
             int row = index / 2;
             return new Rectangle(p.X + HX(12) + col * (cw + HX(12)),
-                                 p.Y + HY(44) + row * (ch + HY(8)), cw, ch);
+                                 p.Y + HY(46) + row * (ch + HY(8)), cw, ch);
         }
 
         private string GetDifficultyName()
@@ -2585,9 +2611,11 @@ namespace LumiaRoyale.Game
             DrawHomeArena();
             DrawHomeControls();
             DrawHomeChests();
+            if (_cardsSlide > 0.01f)
+                DrawRect(new Rectangle(0, 0, vw, vh), new Color(0, 0, 0, (int)(120 * _cardsSlide)));
             DrawHomeNav();
 
-            if (_homeTab == 1) DrawHomeCardsPanel();
+            if (_cardsSlide > 0.01f) DrawHomeCardsPanel();
 
             if (_homeToastTimer > 0f && !string.IsNullOrEmpty(_homeToast))
             {
@@ -2791,10 +2819,11 @@ namespace LumiaRoyale.Game
             DrawBeveledPanel(p, false);
             DrawRect(new Rectangle(p.X + 2, p.Y + 2, p.Width - 4, p.Height - 4), new Color(8, 12, 26));
             for (int x = p.X + 2; x < p.Right - 2; x += 2)
-                DrawRect(new Rectangle(x, p.Y + 2, 2, HY(28)),
+                DrawRect(new Rectangle(x, p.Y + 2, 2, HY(30)),
                          Color.Lerp(Se98TitleA, Se98TitleB, (x - p.X) / (float)p.Width));
             DrawPixelText("CARTAS", p.X + HX(12), p.Y + HY(6), 3, Color.White);
-            DrawBeveledButton(GetCardsPanelCloseRect(), "X", true);
+            DrawPixelText("ARRASTE PARA FECHAR", p.Right - HX(92), p.Y + HY(12), 1,
+                          new Color(150, 170, 205));
 
             for (int i = 0; i < _deck.Length; i++)
             {
@@ -2804,9 +2833,10 @@ namespace LumiaRoyale.Game
                 DrawBeveledPanel(c, sel);
                 DrawRect(new Rectangle(c.X + 2, c.Y + 2, c.Width - 4, c.Height - 4),
                          sel ? new Color(16, 32, 80) : new Color(18, 24, 42));
+                DrawRect(new Rectangle(c.X + 2, c.Y + 2, c.Width - 4, HY(4)), def.Color);
 
                 var tex = GetCardPortraitTexture(def);
-                var portrait = new Rectangle(c.X + HX(6), c.Y + HY(6), HX(60), HY(60));
+                var portrait = new Rectangle(c.X + HX(8), c.Y + HY(12), HX(62), HY(62));
                 if (tex != null)
                 {
                     var src = new Rectangle((PunyFrontDir * 3 + 1) * PunyCell, 0, PunyCell, PunyCell);
@@ -2817,18 +2847,40 @@ namespace LumiaRoyale.Game
                     DrawRect(portrait, def.Color);
                     DrawRect(portrait, Color.White * 0.4f, 2);
                 }
+                DrawRect(portrait, def.Color, 2);
 
-                var cost = new Rectangle(c.Right - HX(30), c.Y + HY(4), HX(24), HX(24));
+                var cost = new Rectangle(c.Right - HX(32), c.Y + HY(6), HX(26), HX(26));
                 DrawBeveledPanel(cost, false);
                 DrawPixelText(def.Cost.ToString(), cost.Center.X - 4, cost.Center.Y - 7, 3, Se98Text);
 
                 string name = def.Name.ToUpperInvariant();
                 if (name.Length > 12) name = name.Substring(0, 12);
-                DrawPixelText(name, c.X + HX(72), c.Y + HY(10), 2, Color.White);
-                DrawPixelText(def.Kind.ToString().ToUpperInvariant(), c.X + HX(72), c.Y + HY(30), 2,
+                DrawPixelText(name, c.X + HX(76), c.Y + HY(14), 2, Color.White);
+                DrawPixelText(def.Kind.ToString().ToUpperInvariant(), c.X + HX(76), c.Y + HY(36), 2,
                               new Color(180, 200, 230));
-                DrawPixelText("DMG " + def.Damage + "  VIDA " + def.Hp, c.X + HX(6), c.Y + HY(76), 2,
+                DrawPixelText("DMG " + def.Damage + "  VIDA " + def.Hp, c.X + HX(8), c.Y + HY(84), 2,
                               Se98Face);
+            }
+
+            var d = new Rectangle(p.X + HX(12), p.Y + HY(506), p.Width - HX(24), HY(118));
+            DrawBeveledPanel(d, true);
+            DrawRect(new Rectangle(d.X + 2, d.Y + 2, d.Width - 4, d.Height - 4), new Color(12, 18, 36));
+            if (_selectedDeckCard >= 0 && _selectedDeckCard < _deck.Length)
+            {
+                var def = _deck[_selectedDeckCard];
+                DrawPixelText(def.Name.ToUpperInvariant(), d.X + HX(10), d.Y + HY(8), 3, Color.White);
+                DrawPixelText("CUSTO " + def.Cost + "  DMG " + def.Damage + "  VIDA " + def.Hp,
+                              d.X + HX(10), d.Y + HY(38), 2, new Color(255, 220, 130));
+                DrawPixelText("ALCANCE " + (int)def.Range + "  VEL " + (int)def.Speed,
+                              d.X + HX(10), d.Y + HY(62), 2, Se98Face);
+                DrawPixelText(def.Kind.ToString().ToUpperInvariant(), d.X + HX(10), d.Y + HY(86), 2,
+                              new Color(180, 200, 230));
+            }
+            else
+            {
+                DrawPixelText("TOQUE EM UMA CARTA", d.X + HX(10), d.Y + HY(12), 2, Se98Face);
+                DrawPixelText("VEJA CUSTO, DANO E VIDA", d.X + HX(10), d.Y + HY(40), 2,
+                              new Color(150, 170, 205));
             }
         }
 

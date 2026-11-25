@@ -30,7 +30,7 @@ namespace LumiaRoyale.Game
         private Texture2D _homeBannerTex;
 
         // Versão exibida na home para confirmar qual APPX está instalado.
-        private const string BuildTag = "V 1.1.5";
+        private const string BuildTag = "V 1.1.6";
 
         private ArenaDef _arenaDef;
         private string _arenaId = "vale";

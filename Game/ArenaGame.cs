@@ -88,8 +88,7 @@ namespace LumiaRoyale.Game
         private int _crowns;
         private int _coins;
         private int _gems;
-        private int _chestWins;
-        private bool _chestReady;
+        private int[] _chestProgress = new int[4];
         private bool[] _chestOpened = new bool[4];
         private int _homeTab; // 0 = batalha, 1 = cartas
         private int _selectedDeckCard = -1;
@@ -159,6 +158,11 @@ namespace LumiaRoyale.Game
             return false;
         }
 
+        private bool IsChestReady(int i)
+        {
+            return i >= 0 && i < _chestProgress.Length && !_chestOpened[i] && _chestProgress[i] >= 3;
+        }
+
         private void LoadProgress()
         {
             var v = ApplicationData.Current.LocalSettings.Values;
@@ -168,8 +172,20 @@ namespace LumiaRoyale.Game
             _crowns = ReadInt(v, "crowns");
             _coins = ReadInt(v, "coins");
             _gems = ReadInt(v, "gems");
-            _chestWins = ReadInt(v, "chestWins");
-            _chestReady = ReadBool(v, "chestReady");
+            int total = 0;
+            for (int i = 0; i < _chestProgress.Length; i++)
+            {
+                _chestProgress[i] = ReadInt(v, "chestProgress" + i);
+                total += _chestProgress[i];
+            }
+            // Migra saves antigos (contador único) para o progresso por baú.
+            if (total == 0)
+            {
+                int oldWins = ReadInt(v, "chestWins");
+                bool oldReady = ReadBool(v, "chestReady");
+                if (oldWins > 0 || oldReady)
+                    _chestProgress[0] = oldReady ? 3 : Math.Min(3, oldWins);
+            }
             for (int i = 0; i < _chestOpened.Length; i++)
                 _chestOpened[i] = ReadBool(v, "chestOpened" + i);
             _towerLevel = TowerBalance.BaseLevel + _trophies / 150;
@@ -184,8 +200,8 @@ namespace LumiaRoyale.Game
             v["crowns"] = _crowns;
             v["coins"] = _coins;
             v["gems"] = _gems;
-            v["chestWins"] = _chestWins;
-            v["chestReady"] = _chestReady;
+            for (int i = 0; i < _chestProgress.Length; i++)
+                v["chestProgress" + i] = _chestProgress[i];
             for (int i = 0; i < _chestOpened.Length; i++)
                 v["chestOpened" + i] = _chestOpened[i];
         }
@@ -204,13 +220,13 @@ namespace LumiaRoyale.Game
                 _wins++;
                 _trophies += 30;
                 _coins += 50;
-                _chestWins++;
-                if (_chestWins >= 3)
+                for (int i = 0; i < _chestProgress.Length; i++)
                 {
-                    _chestWins = 0;
-                    if (_chestOpened.All(o => o))
-                        for (int i = 0; i < _chestOpened.Length; i++) _chestOpened[i] = false;
-                    _chestReady = true;
+                    if (_chestOpened[i] || _chestProgress[i] >= 3) continue;
+                    _chestProgress[i]++;
+                    if (_chestProgress[i] >= 3)
+                        ShowHomeToast("BAU " + (i + 1) + " PRONTO!");
+                    break;
                 }
             }
             else
@@ -227,7 +243,6 @@ namespace LumiaRoyale.Game
                 _status = "NIVEL " + _towerLevel + "!";
                 _statusTimer = 3f;
             }
-            if (_chestReady) ShowHomeToast("BAU PRONTO NA HOME");
             SaveProgress();
         }
 
@@ -627,11 +642,10 @@ namespace LumiaRoyale.Game
                     for (int i = 0; i < 4; i++)
                     {
                         if (!GetHomeChestRect(i).Contains((int)p.X, (int)p.Y)) continue;
-                        if (_chestReady && !_chestOpened[i])
+                        if (IsChestReady(i))
                         {
                             _chestOpened[i] = true;
-                            _chestReady = false;
-                            _chestWins = 0;
+                            _chestProgress[i] = 0;
                             _trophies += 25;
                             _gems += 10;
                             int nextLevel = TowerBalance.BaseLevel + _trophies / 150;
@@ -639,7 +653,9 @@ namespace LumiaRoyale.Game
                             ShowHomeToast("BAU " + (i + 1) + " ABERTO +25 TROFEUS +10 GEMAS");
                             SaveProgress();
                         }
-                        else ShowHomeToast(_chestOpened[i] ? "BAU JA ABERTO" : "GANHE 3 PARTIDAS PARA O BAU");
+                        else ShowHomeToast(_chestOpened[i]
+                            ? "BAU " + (i + 1) + " JA ABERTO"
+                            : "BAU " + (i + 1) + " - " + _chestProgress[i] + "/3 VITORIAS");
                         return;
                     }
                     return;
@@ -762,9 +778,10 @@ namespace LumiaRoyale.Game
 
         private Rectangle GetHomeArenaRect()
         {
+            // Arena independente do banner/nome: sempre no centro da tela.
             int size = HX(276);
-            var nick = GetHomeNickRect();
-            return new Rectangle(GraphicsDevice.Viewport.Width / 2 - size / 2, nick.Bottom + HY(4), size, size);
+            return new Rectangle(GraphicsDevice.Viewport.Width / 2 - size / 2,
+                                 GraphicsDevice.Viewport.Height / 2 - size / 2, size, size);
         }
 
         private Rectangle GetHomeExitRect()
@@ -790,11 +807,12 @@ namespace LumiaRoyale.Game
 
         private Rectangle GetHomeChestRect(int index)
         {
-            var a = GetHomeArenaRect();
             var buttons = GetHomePlayRect();
-            int gap = HX(8);
-            int cw = (a.Width - gap * 3) / 4;
-            return new Rectangle(a.X + index * (cw + gap), buttons.Bottom + HY(8), cw, HY(70));
+            int totalW = GraphicsDevice.Viewport.Width - HX(24);
+            int gap = HX(10);
+            int cw = (totalW - gap * 3) / 4;
+            int x0 = (GraphicsDevice.Viewport.Width - totalW) / 2;
+            return new Rectangle(x0 + index * (cw + gap), buttons.Bottom + HY(10), cw, HY(84));
         }
 
         private Rectangle GetNavRect()
@@ -2728,23 +2746,66 @@ namespace LumiaRoyale.Game
 
             DrawHomeTower(new Vector2(lx, r.Y + 66), true, false);
             DrawHomeTower(new Vector2(rx, r.Y + 66), true, false);
-            DrawHomeTower(new Vector2(r.Center.X, r.Y + 16), true, true);
+            DrawHomeTower(new Vector2(r.Center.X, r.Y + 30), true, true);
             DrawHomeTower(new Vector2(lx, r.Bottom - 66), false, false);
             DrawHomeTower(new Vector2(rx, r.Bottom - 66), false, false);
-            DrawHomeTower(new Vector2(r.Center.X, r.Bottom - 16), false, true);
+            DrawHomeTower(new Vector2(r.Center.X, r.Bottom - 30), false, true);
 
-            // Duas tropas atravessando a ponte, animadas pela mesma textura do jogo.
-            var src = new Rectangle((PunyFrontDir * 3 + (int)(_animTime * 6f) % 3) * PunyCell,
-                                    PunyCell, PunyCell, PunyCell);
+            // Confronto rápido azul x vermelho, em loop de 2 segundos.
+            float t = (_animTime * 0.5f) % 1f;
+            float approach = MathHelper.Clamp(t / 0.45f, 0f, 1f);
+            bool clash = t >= 0.42f && t < 0.78f;
+            float blueX = MathHelper.Lerp(r.X + 34f, r.Center.X - 16f, approach);
+            float redX = MathHelper.Lerp(r.Right - 34f, r.Center.X + 16f, approach);
+            if (t >= 0.78f)
+            {
+                float back = (t - 0.78f) / 0.22f;
+                redX = MathHelper.Lerp(r.Center.X + 16f, r.Right - 34f, back);
+                blueX = MathHelper.Lerp(r.Center.X - 16f, r.Center.X - 36f, back);
+            }
+
+            int blueDir = PunyDirGroup(new Vector2(1f, 0f));
+            int redDir = PunyDirGroup(new Vector2(-1f, 0f));
+            int walkFrame = (int)(_animTime * 9f) % 3;
+            int atkFrame = Math.Min(2, (int)((t - 0.42f) / 0.06f) % 3);
+            int row = clash ? 2 : 1;
+            int frame = clash ? atkFrame : walkFrame;
+
             for (int i = 0; i < 2; i++)
             {
-                float phase = (_animTime * 0.13f + i * 0.5f) % 1f;
-                var dst = new Rectangle((int)(r.X + 30f + phase * (r.Width - 60f)),
-                                        midY - 30 - i * 12, 26, 26);
-                var tex = i == 0 ? _punySoldierTex : _punyArcherTex;
-                if (tex != null) _spriteBatch.Draw(tex, dst, src, Color.White * 0.9f);
-                else DrawRect(dst, i == 0 ? new Color(90, 170, 255) : new Color(255, 190, 80));
+                int y = midY - 30 - i * 16;
+                DrawHomeDemoUnit(_punySoldierTex, (int)blueX, y, blueDir, row, frame, 30, new Color(120, 180, 255));
+                DrawHomeDemoUnit(_punyWarriorTex, (int)redX, y, redDir, row, frame, 30, new Color(255, 130, 120));
             }
+
+            if (clash)
+            {
+                int cx = (int)((blueX + redX) / 2f);
+                int cy = midY - 38;
+                int j = (int)(Math.Sin(_animTime * 22f) * 3f);
+                for (int k = 0; k < 4; k++)
+                {
+                    Color sc = k % 2 == 0 ? new Color(255, 225, 120) : new Color(255, 255, 255);
+                    DrawRect(new Rectangle(cx - 8 + k * 5 - j, cy - 8 + (k % 2) * 12, 4, 4), sc * 0.9f);
+                }
+            }
+
+            var plaque = new Rectangle(r.X + 6, r.Y + 6, r.Width - 12, HY(24));
+            DrawRect(plaque, new Color(6, 10, 22, 225));
+            DrawRect(plaque, new Color(120, 160, 220), 1);
+            DrawPixelText("ARENA 1", r.Center.X - 28, r.Y + HY(10), 2, Color.White);
+        }
+
+        private void DrawHomeDemoUnit(Texture2D tex, int x, int y, int dir, int row, int frame, int size, Color team)
+        {
+            var dst = new Rectangle(x - size / 2, y - size / 2, size, size);
+            DrawRect(new Rectangle(dst.X + 4, dst.Bottom - 3, dst.Width - 8, 3), new Color(0, 0, 0, 55));
+            if (tex != null)
+            {
+                var src = new Rectangle((dir * 3 + frame) * PunyCell, row * PunyCell, PunyCell, PunyCell);
+                _spriteBatch.Draw(tex, dst, src, Color.Lerp(Color.White, team, 0.12f));
+            }
+            else DrawRect(dst, team);
         }
 
         private void DrawHomeBridge(int cx, int cy)
@@ -2815,41 +2876,59 @@ namespace LumiaRoyale.Game
             for (int i = 0; i < 4; i++)
             {
                 var c = GetHomeChestRect(i);
-                bool ready = _chestReady && !_chestOpened[i];
+                int prog = _chestProgress[i];
+                bool ready = IsChestReady(i);
                 bool opened = _chestOpened[i];
-                DrawBeveledPanel(c, false);
-                DrawRect(new Rectangle(c.X + 2, c.Y + 2, c.Width - 4, c.Height - 4),
-                         new Color(10, 16, 32));
 
-                Color wood = opened ? new Color(70, 70, 76)
-                           : ready ? new Color(190, 140, 70) : new Color(110, 86, 60);
-                int pw = c.Width - HX(20);
-                var body = new Rectangle(c.X + HX(10), c.Y + HY(28), pw, HY(34));
-                var lid = new Rectangle(c.X + HX(10), c.Y + HY(18), pw, HY(14));
-                DrawRect(body, wood);
-                DrawRect(body, new Color(0, 0, 0, 60), 1);
-                DrawRect(lid, wood);
-                DrawRect(lid, new Color(0, 0, 0, 50), 1);
+                DrawBeveledPanel(c, false);
+                DrawRect(new Rectangle(c.X + 2, c.Y + 2, c.Width - 4, c.Height - 4), new Color(10, 16, 32));
+                DrawRect(new Rectangle(c.X + 2, c.Y + 2, c.Width - 4, HY(18)), new Color(8, 12, 26));
+                DrawPixelText("BAU " + (i + 1), c.X + HX(8), c.Y + HY(5), 2, Se98Face);
+
+                int bx = c.X + HX(12);
+                int bw = c.Width - HX(24);
+                var body = new Rectangle(bx, c.Y + HY(38), bw, HY(32));
+                var lid = new Rectangle(bx, c.Y + HY(24), bw, HY(16));
+
+                Color wood = opened ? new Color(70, 72, 78)
+                           : ready ? new Color(196, 146, 74) : new Color(118, 88, 58);
+                Color dark = opened ? new Color(40, 42, 48) : new Color(78, 54, 34);
+                if (opened) lid.Y -= HY(8);
+
+                if (opened)
+                    DrawRect(new Rectangle(body.X, c.Y + HY(38), bw, HY(10)), new Color(20, 22, 28));
+
+                DrawRect(body, dark);
+                DrawRect(body, wood, 2);
+                DrawRect(lid, dark);
+                DrawRect(lid, wood, 2);
+                DrawRect(new Rectangle(lid.X + 2, lid.Y + 2, lid.Width - 4, HY(3)),
+                         new Color(255, 220, 150, 90));
+
+                Color metal = opened ? new Color(96, 98, 104) : new Color(150, 156, 164);
+                DrawRect(new Rectangle(bx + HX(14), body.Y, HX(8), body.Height), metal);
+                DrawRect(new Rectangle(bx + bw - HX(22), body.Y, HX(8), body.Height), metal);
+                DrawRect(new Rectangle(bx + HX(14), lid.Y, HX(8), lid.Height), metal);
+                DrawRect(new Rectangle(bx + bw - HX(22), lid.Y, HX(8), lid.Height), metal);
+
                 if (!opened)
                 {
-                    DrawRect(new Rectangle(c.Center.X - HX(5), c.Y + HY(36), HX(10), HX(12)),
-                             new Color(240, 210, 120));
+                    var lock = new Rectangle(c.Center.X - HX(8), c.Y + HY(42), HX(16), HX(16));
+                    DrawRect(lock, new Color(240, 208, 112));
+                    DrawRect(lock, new Color(90, 62, 24), 1);
+                    DrawRect(new Rectangle(c.Center.X - HX(2), c.Y + HY(46), HX(4), HX(6)), new Color(70, 46, 20));
                 }
-                else
-                {
-                    DrawRect(new Rectangle(c.X + HX(12), c.Y + HY(22), pw - HX(4), HY(12)),
-                             new Color(30, 34, 44));
-                }
-
-                string label = opened ? "ABERTO" : ready ? "ABRIR" : (i + 1) + "/3";
-                DrawPixelText(label, c.Center.X - label.Length * 6, c.Y + HY(4), 2,
-                              ready ? new Color(255, 230, 150) : Se98Face);
                 if (ready)
                 {
                     int pulse = ClampByte((int)(Math.Sin(_animTime * 4f + i) * 20f));
-                    DrawRect(new Rectangle(c.X + 4, c.Bottom - HY(4), c.Width - 8, HY(3)),
+                    DrawRect(new Rectangle(c.X + 4, c.Bottom - HY(3), c.Width - 8, HY(3)),
                              new Color(255, 230 - pulse, 120));
                 }
+
+                string label = opened ? "ABERTO" : ready ? "ABRIR" : prog + "/3 VITORIAS";
+                int scale = label.Length > 8 ? 1 : 2;
+                DrawPixelText(label, c.Center.X - label.Length * 2 * scale, c.Y + HY(72), scale,
+                              ready ? new Color(255, 230, 150) : Se98Face);
             }
         }
 

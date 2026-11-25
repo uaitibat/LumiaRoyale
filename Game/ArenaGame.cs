@@ -959,22 +959,38 @@ namespace LumiaRoyale.Game
             }
             else
             {
-                if (p.UnitTarget != null && p.UnitTarget.Alive && p.UnitTarget.IsEnemy == !p.ByPlayer && Vector2.Distance(p.UnitTarget.Pos, hitPos) < 80f)
-                {
-                    DamageUnit(p.UnitTarget, p.Damage, p.Color);
-                }
-                else if (p.TowerTarget != null && p.TowerTarget.Alive && p.TowerTarget.IsEnemy == !p.ByPlayer && Vector2.Distance(p.TowerTarget.Pos, hitPos) < 80f)
+                // Alvo inimigo tem IsEnemy == ByPlayer: player ataca IsEnemy=true,
+                // IA ataca IsEnemy=false. A comparação invertida aqui fazia os
+                // projéteis (Vigia/Faisca/Torreta) nunca causarem dano.
+                if (p.TowerTarget != null && p.TowerTarget.Alive && p.TowerTarget.IsEnemy == p.ByPlayer && Vector2.Distance(p.TowerTarget.Pos, hitPos) < 80f)
                 {
                     DamageTower(p.TowerTarget, p.Damage, p.ByPlayer);
                 }
+                else if (p.UnitTarget != null && p.UnitTarget.Alive && p.UnitTarget.IsEnemy == p.ByPlayer && Vector2.Distance(p.UnitTarget.Pos, hitPos) < 80f)
+                {
+                    DamageUnit(p.UnitTarget, p.Damage, p.Color);
+                }
                 else
                 {
-                    // fallback: damage nearest enemy at hit
+                    // fallback: nearest opposing unit, or opposing tower at the hit point
+                    bool applied = false;
                     foreach (var u in _units)
                     {
                         if (!u.Alive || u.IsEnemy == !p.ByPlayer) continue;
-                        if (Vector2.DistanceSquared(p.Pos, u.Pos) <= (u.Radius + p.Radius + 2f) * (u.Radius + p.Radius + 2f))
-                        { DamageUnit(u, p.Damage, p.Color); break; }
+                        float rr = u.Radius + p.Radius + 2f;
+                        if (Vector2.DistanceSquared(p.Pos, u.Pos) <= rr * rr)
+                        { DamageUnit(u, p.Damage, p.Color); applied = true; break; }
+                    }
+                    if (!applied)
+                    {
+                        foreach (var t in _towers)
+                        {
+                            if (!t.Alive || t.IsEnemy == !p.ByPlayer) continue;
+                            float tr = t.IsMain ? 34f : 28f;
+                            float rr = tr + p.Radius + 2f;
+                            if (Vector2.DistanceSquared(p.Pos, t.Pos) <= rr * rr)
+                            { DamageTower(t, p.Damage, p.ByPlayer); break; }
+                        }
                     }
                 }
                 AddFx(hitPos, p.Color, 8f, 0.14f, "hit");

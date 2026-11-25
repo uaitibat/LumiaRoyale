@@ -1886,6 +1886,7 @@ namespace LumiaRoyale.Game
                 DrawDeployHint();
                 DrawTowers();
                 DrawUnits();
+                DrawProjectiles();
                 DrawFx();
                 _spriteBatch.End();
             }
@@ -2525,6 +2526,25 @@ namespace LumiaRoyale.Game
             DrawRect(new Rectangle(x, y, (int)(w * pct), h), pct > 0.35f ? new Color(120, 230, 110) : new Color(235, 90, 80));
         }
 
+        private void DrawProjectiles()
+        {
+            foreach (var p in _projectiles)
+            {
+                if (!p.Alive) continue;
+                int r = Math.Max(2, (int)p.Radius);
+                var dst = new Rectangle((int)p.Pos.X - r, (int)p.Pos.Y - r, r * 2, r * 2);
+                DrawRect(new Rectangle(dst.X - 1, dst.Y - 1, dst.Width + 2, dst.Height + 2),
+                         new Color(0, 0, 0, 100));
+                DrawRect(dst, p.Color);
+                if (p.AreaRadius > 0f)
+                {
+                    int ar = (int)p.AreaRadius;
+                    DrawRect(new Rectangle((int)p.Pos.X - ar, (int)p.Pos.Y - ar, ar * 2, ar * 2),
+                             p.Color * 0.18f);
+                }
+            }
+        }
+
         private void DrawFx()
         {
             foreach (var f in _fx)
@@ -2981,10 +3001,11 @@ namespace LumiaRoyale.Game
                         Matrix.CreateTranslation(r.X - _arenaRect.X * sx, r.Y - _arenaRect.Y * sy, 0f);
 
                 _spriteBatch.End();
-                _spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: m);
+                _spriteBatch.Begin(samplerState: SamplerState.LinearClamp, transformMatrix: m);
                 DrawArena();
                 DrawTowers();
                 DrawUnits();
+                DrawProjectiles();
                 DrawFx();
                 _spriteBatch.End();
                 _spriteBatch.Begin(samplerState: SamplerState.PointClamp);

@@ -699,6 +699,19 @@ namespace LumiaRoyale.Game
                 if (u.IsBuilding) { u.LifeLeft -= dt; }
                 u.AttackTimer -= dt;
                 var target = FindTarget(u);
+                if (target.HasValue)
+                {
+                    u.AimPos = target.Value.pos;
+                    u.HasAim = true;
+                    u.AimIsStructure = target.Value.isTower ||
+                                       (target.Value.unit != null && target.Value.unit.IsBuilding);
+                }
+                else
+                {
+                    u.HasAim = false;
+                    u.AimPos = u.Pos;
+                    u.AimIsStructure = false;
+                }
                 if (target == null) continue;
 
                 var toTarget = target.Value.pos - u.Pos;
@@ -1171,6 +1184,7 @@ namespace LumiaRoyale.Game
 
             _spriteBatch.Begin(transformMatrix: Matrix.CreateTranslation(new Vector3(_shakeOffset.X, _shakeOffset.Y, 0f)));
             DrawArena();
+            DrawLaneHints();
             DrawDeployHint();
             DrawTowers();
             DrawUnits();
@@ -1272,6 +1286,46 @@ namespace LumiaRoyale.Game
             DrawRect(new Rectangle(r.X + 6, r.Bottom - 9, r.Width - 12, 3), new Color(190, 158, 120));
         }
 
+        // Depois que uma lateral cai, mostra o caminho aberto até o rei daquele lado.
+        private void DrawLaneHints()
+        {
+            if (_matchState == "menu" || _matchState == "win" || _matchState == "lose") return;
+
+            foreach (var t in _towers)
+            {
+                if (t.IsMain || t.Alive) continue;
+                var king = _towers.FirstOrDefault(k => k.IsEnemy == t.IsEnemy && k.IsMain);
+                if (king == null) continue;
+
+                bool playerLane = t.IsEnemy; // lateral inimiga caiu => caminho do jogador
+                float yStart = playerLane ? _arenaRect.Center.Y - 14f : _arenaRect.Center.Y + 14f;
+                float yEnd = playerLane ? king.Pos.Y + 58f : king.Pos.Y - 58f;
+                int y = (int)Math.Min(yStart, yEnd);
+                int h = (int)Math.Max(8f, Math.Abs(yEnd - yStart));
+                int x = (int)t.Pos.X - 26;
+                Color tint = playerLane ? new Color(120, 190, 255) : new Color(255, 130, 110);
+
+                DrawRect(new Rectangle(x, y, 52, h), new Color(tint.R, tint.G, tint.B, 26));
+                DrawRect(new Rectangle(x, y, 2, h), new Color(tint.R, tint.G, tint.B, 70));
+                DrawRect(new Rectangle(x + 50, y, 2, h), new Color(tint.R, tint.G, tint.B, 70));
+
+                int dir = playerLane ? -1 : 1;
+                int drift = (int)(_animTime * 34f) % 48;
+                for (int off = 8 + drift; off < h - 8; off += 48)
+                {
+                    int ay = dir < 0 ? y + h - off : y + off;
+                    int ax = (int)t.Pos.X;
+                    int a = 95 + (int)(Math.Sin(_animTime * 3f + off) * 25f);
+                    Color arrow = new Color(tint.R, tint.G, tint.B, ClampByte(a));
+                    int low = dir < 0 ? 3 : 0;
+                    int high = dir < 0 ? 0 : 3;
+                    DrawRect(new Rectangle(ax - 7, ay + low, 5, 2), arrow);
+                    DrawRect(new Rectangle(ax - 2, ay + high, 5, 2), arrow);
+                    DrawRect(new Rectangle(ax + 3, ay + low, 5, 2), arrow);
+                }
+            }
+        }
+
         private void DrawDeployHint()
         {
             if (_selectedHand < 0 || _matchState != "playing") return;
@@ -1335,7 +1389,7 @@ namespace LumiaRoyale.Game
         {
             foreach (var t in _towers)
             {
-                if (!t.Alive) continue;
+                if (!t.Alive) { DrawTowerRubble(t); continue; }
                 Color team = t.IsEnemy ? new Color(208, 74, 74) : new Color(74, 146, 226);
                 Color teamDark = t.IsEnemy ? new Color(120, 36, 36) : new Color(36, 78, 132);
                 int size = t.IsMain ? 76 : 60;
@@ -1369,8 +1423,50 @@ namespace LumiaRoyale.Game
                 var hbg = new Rectangle(body.X - 8, body.Y - 16, body.Width + 16, 7);
                 var hfg = new Rectangle(hbg.X, hbg.Y, (int)(hbg.Width * pct), hbg.Height);
                 DrawRect(hbg, new Color(20, 20, 20, 200));
-                DrawRect(hfg, pct > 0.35f ? new Color(110, 220, 90) : new Color(230, 90, 70));
+                Color hpFill = team;
+                if (pct <= 0.35f) hpFill = Color.Lerp(hpFill, new Color(255, 205, 90), 0.45f);
+                DrawRect(hfg, hpFill);
+                for (int i = 1; i < 4; i++)
+                    DrawRect(new Rectangle(hbg.X + hbg.Width * i / 4, hbg.Y, 1, hbg.Height), new Color(0, 0, 0, 110));
                 DrawRect(hbg, new Color(255, 255, 255, 70), 1);
+
+                if (t.IsMain) DrawKingIndicator(t, body);
+            }
+        }
+
+        private void DrawTowerRubble(Tower t)
+        {
+            int size = t.IsMain ? 76 : 60;
+            int cx = (int)t.Pos.X;
+            int baseY = (int)t.Pos.Y + size / 2;
+            Color stone = t.IsEnemy ? new Color(126, 78, 74) : new Color(76, 96, 122);
+            Color dark = new Color(42, 46, 42, 200);
+
+            DrawRect(new Rectangle(cx - size / 2 - 6, baseY - 6, size + 12, 10), new Color(24, 32, 24, 130));
+            DrawRect(new Rectangle(cx - 24, baseY - 12, 18, 10), dark);
+            DrawRect(new Rectangle(cx - 5, baseY - 19, 19, 14), stone);
+            DrawRect(new Rectangle(cx + 14, baseY - 10, 13, 8), dark);
+            DrawRect(new Rectangle(cx - 20, baseY - 15, 11, 3), new Color(210, 210, 200, 90));
+            DrawRect(new Rectangle(cx - 3, baseY - 21, 13, 3), new Color(210, 210, 200, 70));
+        }
+
+        private void DrawKingIndicator(Tower t, Rectangle body)
+        {
+            int ix = body.Center.X;
+            int iy = body.Y - 32;
+            if (t.Awake)
+            {
+                int pulse = (int)(Math.Sin(_animTime * 5f) * 18f);
+                Color glow = new Color(255, 220 - pulse, 110, 210);
+                DrawRect(new Rectangle(ix - 10, iy + 5, 20, 5), glow);
+                DrawRect(new Rectangle(ix - 7, iy, 4, 6), glow);
+                DrawRect(new Rectangle(ix - 2, iy - 3, 4, 8), glow);
+                DrawRect(new Rectangle(ix + 3, iy, 4, 6), glow);
+            }
+            else
+            {
+                DrawPixelText("Z", ix - 2, iy + 2, 1, new Color(215, 230, 250, 150));
+                DrawPixelText("Z", ix + 7, iy - 4, 1, new Color(215, 230, 250, 85));
             }
         }
 
@@ -1411,6 +1507,37 @@ namespace LumiaRoyale.Game
                 int hpW = u.Def.Id == "pulso" ? 64 : (u.Def.Id == "enxame" ? 28 : 44);
                 int hpY = u.Def.Id == "pulso" ? 56 : (u.Def.Id == "enxame" ? 30 : 46);
                 DrawHpBar((int)u.Pos.X - hpW / 2, (int)u.Pos.Y - hpY, hpW, 4, u.Hp, u.MaxHp);
+                if (!u.IsEnemy) DrawAimHint(u);
+            }
+        }
+
+        // Guia discreto do alvo atual das tropas do jogador.
+        private void DrawAimHint(Unit u)
+        {
+            if (_matchState != "playing" || !u.HasAim) return;
+            Vector2 to = u.AimPos - u.Pos;
+            float len = to.Length();
+            if (len < 26f) return;
+
+            Vector2 dir = to / len;
+            float maxLen = Math.Min(len - u.Radius, 84f);
+            Color c = u.AimIsStructure ? new Color(255, 225, 150, 105) : new Color(215, 230, 255, 65);
+            for (float d = u.Radius + 12f; d < maxLen; d += 13f)
+            {
+                int px = (int)(u.Pos.X + dir.X * d);
+                int py = (int)(u.Pos.Y + dir.Y * d);
+                DrawRect(new Rectangle(px - 1, py - 1, 2, 2), c);
+            }
+
+            if (u.AimIsStructure && len <= 150f)
+            {
+                int ax = (int)u.AimPos.X;
+                int ay = (int)u.AimPos.Y;
+                Color mark = new Color(255, 230, 150, 150);
+                DrawRect(new Rectangle(ax - 5, ay, 4, 2), mark);
+                DrawRect(new Rectangle(ax + 2, ay, 4, 2), mark);
+                DrawRect(new Rectangle(ax, ay - 5, 2, 4), mark);
+                DrawRect(new Rectangle(ax, ay + 2, 2, 4), mark);
             }
         }
 

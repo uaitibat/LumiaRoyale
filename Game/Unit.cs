@@ -16,6 +16,10 @@ namespace LumiaRoyale.Game
         public float WalkPhase;
         public float AttackAnim;
         public Vector2 Facing = new Vector2(0, 1);
+        // Usado apenas pelo HUD de batalha: para onde a tropa está indo.
+        public Vector2 AimPos;
+        public bool HasAim;
+        public bool AimIsStructure;
         public bool IsBuilding => Def.Kind == CardKind.Building;
         public bool Alive => Hp > 0 && (!IsBuilding || LifeLeft > 0f);
         public float Radius => GetRadius();
@@ -33,6 +37,9 @@ namespace LumiaRoyale.Game
             WalkPhase = 0f;
             AttackAnim = 0f;
             Facing = isEnemy ? new Vector2(0, 1) : new Vector2(0, -1);
+            AimPos = pos;
+            HasAim = false;
+            AimIsStructure = false;
         }
 
         private float GetRadius()

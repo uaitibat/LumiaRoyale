@@ -2913,9 +2913,9 @@ namespace LumiaRoyale.Game
 
                 if (!opened)
                 {
-                    var lock = new Rectangle(c.Center.X - HX(8), c.Y + HY(42), HX(16), HX(16));
-                    DrawRect(lock, new Color(240, 208, 112));
-                    DrawRect(lock, new Color(90, 62, 24), 1);
+                    var lockRect = new Rectangle(c.Center.X - HX(8), c.Y + HY(42), HX(16), HX(16));
+                    DrawRect(lockRect, new Color(240, 208, 112));
+                    DrawRect(lockRect, new Color(90, 62, 24), 1);
                     DrawRect(new Rectangle(c.Center.X - HX(2), c.Y + HY(46), HX(4), HX(6)), new Color(70, 46, 20));
                 }
                 if (ready)

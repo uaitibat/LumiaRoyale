@@ -18,7 +18,6 @@ namespace LumiaRoyale.Game
         private Texture2D _pixel;
         private Texture2D _archerBackTex;
         private Texture2D _punyArcherTex;
-        private Texture2D _punyWarriorTex;
         private Texture2D _punySoldierTex;
         private Texture2D _punyMageTex;
         private Texture2D _punyArcherPurpleTex;
@@ -67,6 +66,12 @@ namespace LumiaRoyale.Game
 
         private float _enemyMana;
         private float _enemySpawnTimer;
+
+        // Demo da home: partida automática entre dois bots, reaproveitando o motor real.
+        private bool _demoReady;
+        private float _demoBlueTimer;
+        private float _demoRedTimer;
+        private float _demoEndTimer;
         private string _status = "Toque numa carta e depois na sua metade";
         private string _matchState = ""; // "intro", "home", "playing", "paused", "win", "lose"
 
@@ -253,7 +258,6 @@ namespace LumiaRoyale.Game
             _pixel.SetData(new[] { Color.White });
             _archerBackTex = LoadTex("Assets/Sprites/arqueira_back.png");
             _punyArcherTex = LoadTex("Assets/Sprites/Puny/Archer-Green.png");
-            _punyWarriorTex = LoadTex("Assets/Sprites/Puny/Warrior-Red.png");
             _punySoldierTex = LoadTex("Assets/Sprites/Puny/Soldier-Blue.png");
             _punyMageTex = LoadTex("Assets/Sprites/Puny/Mage-Cyan.png");
             _punyArcherPurpleTex = LoadTex("Assets/Sprites/Puny/Archer-Purple.png");
@@ -375,6 +379,11 @@ namespace LumiaRoyale.Game
             _arenaRect = new Rectangle(margin, arenaTop, w - margin * 2, arenaBottom - arenaTop);
             BuildArenaTexture();
 
+            BuildTowers();
+        }
+
+        private void BuildTowers()
+        {
             float leftLaneX = _arenaRect.Left + _arenaRect.Width * 0.25f;
             float rightLaneX = _arenaRect.Left + _arenaRect.Width * 0.75f;
             float centerX = _arenaRect.Left + _arenaRect.Width * 0.5f;
@@ -383,13 +392,13 @@ namespace LumiaRoyale.Game
             int kingHp = TowerBalance.KingHp(_towerLevel);
 
             // Enemy towers (top): side towers forward (closer to river), king receded (closer to top)
-            _towers.Add(new Tower(new Vector2(leftLaneX, arenaTop + 165), sideHp, false, true, _towerLevel));
-            _towers.Add(new Tower(new Vector2(rightLaneX, arenaTop + 165), sideHp, false, true, _towerLevel));
-            _towers.Add(new Tower(new Vector2(centerX, arenaTop + 80), kingHp, true, true, _towerLevel));
+            _towers.Add(new Tower(new Vector2(leftLaneX, _arenaRect.Top + 165), sideHp, false, true, _towerLevel));
+            _towers.Add(new Tower(new Vector2(rightLaneX, _arenaRect.Top + 165), sideHp, false, true, _towerLevel));
+            _towers.Add(new Tower(new Vector2(centerX, _arenaRect.Top + 80), kingHp, true, true, _towerLevel));
             // Player towers (bottom): side towers forward (closer to river), king receded (closer to bottom)
-            _towers.Add(new Tower(new Vector2(leftLaneX, arenaBottom - 165), sideHp, false, false, _towerLevel));
-            _towers.Add(new Tower(new Vector2(rightLaneX, arenaBottom - 165), sideHp, false, false, _towerLevel));
-            _towers.Add(new Tower(new Vector2(centerX, arenaBottom - 80), kingHp, true, false, _towerLevel));
+            _towers.Add(new Tower(new Vector2(leftLaneX, _arenaRect.Bottom - 165), sideHp, false, false, _towerLevel));
+            _towers.Add(new Tower(new Vector2(rightLaneX, _arenaRect.Bottom - 165), sideHp, false, false, _towerLevel));
+            _towers.Add(new Tower(new Vector2(centerX, _arenaRect.Bottom - 80), kingHp, true, false, _towerLevel));
         }
 
         protected override void Update(GameTime gameTime)
@@ -406,6 +415,13 @@ namespace LumiaRoyale.Game
             {
                 _introTime += dt;
                 if (_introTime >= 2.6f) { _matchState = "home"; _introTime = 0f; }
+                base.Update(gameTime);
+                return;
+            }
+
+            if (_matchState == "home")
+            {
+                DemoTick(dt);
                 base.Update(gameTime);
                 return;
             }
@@ -555,6 +571,8 @@ namespace LumiaRoyale.Game
 
         private void AwardCrown(bool enemyTowerDestroyed)
         {
+            // A demo da home não pode alterar coroas nem progresso salvo.
+            if (_demoReady) return;
             if (enemyTowerDestroyed) { _playerCrowns++; _enemyTowersLost++; }
             else { _enemyCrowns++; _playerTowersLost++; }
         }
@@ -625,6 +643,7 @@ namespace LumiaRoyale.Game
 
                     if (GetHomePlayRect().Contains((int)p.X, (int)p.Y))
                     {
+                        _demoReady = false;
                         ResetMatch();
                         return;
                     }
@@ -663,9 +682,10 @@ namespace LumiaRoyale.Game
 
                 if (_matchState == "win" || _matchState == "lose")
                 {
-                    if (GetEndRematchRect().Contains((int)p.X, (int)p.Y)) { ResetMatch(); return; }
+                    if (GetEndRematchRect().Contains((int)p.X, (int)p.Y)) { _demoReady = false; ResetMatch(); return; }
                     if (GetEndMenuRect().Contains((int)p.X, (int)p.Y))
                     {
+                        _demoReady = false;
                         _matchState = "home";
                         _homeTab = 0;
                     }
@@ -782,6 +802,13 @@ namespace LumiaRoyale.Game
             int size = HX(276);
             return new Rectangle(GraphicsDevice.Viewport.Width / 2 - size / 2,
                                  GraphicsDevice.Viewport.Height / 2 - size / 2, size, size);
+        }
+
+        private Rectangle GetHomeArenaTitleRect()
+        {
+            var a = GetHomeArenaRect();
+            int h = HY(28);
+            return new Rectangle(a.X, a.Y - HY(9) - h, a.Width, h);
         }
 
         private Rectangle GetHomeExitRect()
@@ -1093,6 +1120,208 @@ namespace LumiaRoyale.Game
                 }
             }
 
+            float x = laneX + ((float)_rng.NextDouble() - 0.5f) * 24f;
+            return new Vector2(x, y);
+        }
+
+        // ------------------------------------------------------------------
+        // Demo da home: dois bots jogando uma partida real, um em cada base.
+        // Usa as mesmas regras de spawn, mana, dano, torres e projéteis do jogo.
+        // ------------------------------------------------------------------
+        private void DemoReset()
+        {
+            _units.Clear();
+            _towers.Clear();
+            _fx.Clear();
+            _projectiles.Clear();
+            if (_deck == null || _deck.Length == 0)
+                _deck = CardDef.StarterDeck().OrderBy(_ => _rng.Next()).ToArray();
+            BuildTowers();
+            _mana = 5f;
+            _enemyMana = 5f;
+            _demoBlueTimer = 1.0f;
+            _demoRedTimer = 1.4f;
+            _demoEndTimer = 0f;
+            _playerCrowns = 0;
+            _enemyCrowns = 0;
+            _timeLeft = 180f;
+            _demoReady = true;
+            _matchState = "home";
+        }
+
+        private void DemoTick(float dt)
+        {
+            if (!_demoReady) { DemoReset(); return; }
+
+            float rate = 1.05f;
+            _mana = Math.Min(ManaMax, _mana + dt * rate);
+            _enemyMana = Math.Min(ManaMax, _enemyMana + dt * rate);
+
+            _demoBlueTimer -= dt;
+            if (_demoBlueTimer <= 0f)
+            {
+                _demoBlueTimer = 1.3f + (float)_rng.NextDouble() * 0.9f;
+                if (_units.Count < 26) _mana -= DemoPlay(false, _mana);
+            }
+            _demoRedTimer -= dt;
+            if (_demoRedTimer <= 0f)
+            {
+                _demoRedTimer = 1.3f + (float)_rng.NextDouble() * 0.9f;
+                if (_units.Count < 26) _enemyMana -= DemoPlay(true, _enemyMana);
+            }
+
+            UpdateUnits(dt);
+            UpdateTowers(dt);
+            UpdateProjectiles(dt);
+
+            for (int i = _units.Count - 1; i >= 0; i--)
+            {
+                var u = _units[i];
+                if (u.Alive) continue;
+                Color deathColor = u.IsEnemy ? new Color(255, 120, 120) : new Color(120, 190, 255);
+                AddFx(u.Pos, deathColor, u.IsBuilding ? 22f : 16f, 0.30f, "death");
+                _units.RemoveAt(i);
+            }
+
+            bool blueKingAlive = _towers.Any(t => !t.IsEnemy && t.IsMain && t.Alive);
+            bool redKingAlive = _towers.Any(t => t.IsEnemy && t.IsMain && t.Alive);
+            if (blueKingAlive && redKingAlive) { _demoEndTimer = 0f; return; }
+            _demoEndTimer += dt;
+            if (_demoEndTimer >= 1.4f) DemoReset();
+        }
+
+        private float DemoPlay(bool sideIsEnemy, float mana)
+        {
+            var affordable = _deck.Where(c => c.Cost <= mana).ToList();
+            if (affordable.Count == 0) return 0f;
+            var card = DemoChooseCard(affordable, mana, sideIsEnemy);
+            if (card == null) return 0f;
+            Vector2 pos = DemoChoosePos(card, mana, sideIsEnemy);
+            if (!IsValidDeploy(card, pos, sideIsEnemy)) return 0f;
+            SpawnUnit(card, pos, sideIsEnemy);
+            return card.Cost;
+        }
+
+        private CardDef DemoChooseCard(List<CardDef> affordable, float mana, bool sideIsEnemy)
+        {
+            var foes = _units.Where(u => u.IsEnemy != sideIsEnemy && u.Alive).ToList();
+            var own = _units.Where(u => u.IsEnemy == sideIsEnemy && u.Alive).ToList();
+
+            // Magia em cima de agrupamentos inimigos.
+            var spell = affordable.Where(c => c.Kind == CardKind.Spell)
+                                  .OrderByDescending(c => c.Cost).FirstOrDefault();
+            if (spell != null)
+            {
+                Vector2 cluster = FindClusterCenter(foes, spell.AreaRadius);
+                if (cluster != Vector2.Zero && CountNear(foes, cluster, spell.AreaRadius) >= 2)
+                    return spell;
+            }
+
+            // Defesa: tropas adversárias chegando perto da própria base.
+            float threatLine = sideIsEnemy ? _arenaRect.Center.Y - 40f : _arenaRect.Center.Y + 40f;
+            var threats = foes.Where(u => sideIsEnemy ? u.Pos.Y > threatLine : u.Pos.Y < threatLine).ToList();
+            if (threats.Count > 0)
+            {
+                Vector2 center = AveragePos(threats);
+                int near = CountNear(foes, center, 90f);
+                bool colossus = threats.Any(u => u.Def.Id == "pulso");
+
+                var building = affordable.FirstOrDefault(c => c.Kind == CardKind.Building);
+                if (building != null && (near >= 1 || colossus) &&
+                    !own.Any(u => u.IsBuilding && Vector2.Distance(u.Pos, center) < 140f))
+                    return building;
+
+                if (colossus)
+                {
+                    var swarm = affordable.FirstOrDefault(c => c.Id == "enxame");
+                    if (swarm != null) return swarm;
+                }
+                if (near >= 2)
+                {
+                    var ranged = affordable.FirstOrDefault(c => c.Kind == CardKind.Ranged && c.Cost >= 2);
+                    if (ranged != null) return ranged;
+                }
+                var counter = affordable.Where(c => c.Kind == CardKind.Melee || c.Kind == CardKind.Ranged)
+                                        .OrderByDescending(c => c.Hp).FirstOrDefault();
+                if (counter != null) return counter;
+            }
+
+            // Ataque: com vantagem de mana ou poucos inimigos, investe numa lane.
+            if (mana >= 6f || foes.Count <= 1)
+            {
+                var push = affordable.Where(c => c.Kind == CardKind.Melee || c.Kind == CardKind.Ranged)
+                                     .OrderByDescending(c => c.Cost).FirstOrDefault();
+                if (push != null) return push;
+            }
+            return affordable.OrderBy(c => c.Kind == CardKind.Spell ? 10 : 0)
+                             .ThenBy(c => c.Cost).FirstOrDefault();
+        }
+
+        private Vector2 DemoChoosePos(CardDef card, float mana, bool sideIsEnemy)
+        {
+            float leftX = _arenaRect.Left + _arenaRect.Width * 0.25f;
+            float rightX = _arenaRect.Left + _arenaRect.Width * 0.75f;
+            var foes = _units.Where(u => u.IsEnemy != sideIsEnemy && u.Alive).ToList();
+
+            if (card.Kind == CardKind.Spell)
+            {
+                Vector2 cluster = FindClusterCenter(foes, card.AreaRadius);
+                if (cluster != Vector2.Zero) return cluster;
+                var tower = _towers.Where(t => t.IsEnemy != sideIsEnemy && t.Alive)
+                                   .OrderBy(t => t.IsMain ? 1 : 0).FirstOrDefault();
+                return tower != null ? tower.Pos : new Vector2(_arenaRect.Center.X,
+                    sideIsEnemy ? _arenaRect.Bottom - 120f : _arenaRect.Top + 120f);
+            }
+
+            float laneX = leftX;
+            int leftThreat = foes.Count(u => Math.Abs(u.Pos.X - leftX) < _arenaRect.Width * 0.3f);
+            int rightThreat = foes.Count(u => Math.Abs(u.Pos.X - rightX) < _arenaRect.Width * 0.3f);
+            if (rightThreat > leftThreat) laneX = rightX;
+            else if (rightThreat == leftThreat)
+            {
+                var tl = _towers.FirstOrDefault(t => t.IsEnemy != sideIsEnemy && !t.IsMain && t.Alive &&
+                                                     Math.Abs(t.Pos.X - leftX) < 20f);
+                var tr = _towers.FirstOrDefault(t => t.IsEnemy != sideIsEnemy && !t.IsMain && t.Alive &&
+                                                     Math.Abs(t.Pos.X - rightX) < 20f);
+                int lh = tl != null ? tl.Hp : 99999;
+                int rh = tr != null ? tr.Hp : 99999;
+                laneX = rh < lh ? rightX : leftX;
+            }
+
+            // Bolso avançado quando uma torre lateral adversária caiu.
+            var pockets = GetDeployPockets(sideIsEnemy);
+            bool canPocket = pockets.Count > 0 && card.Kind != CardKind.Building && mana >= 5f;
+            if (canPocket && _rng.NextDouble() < 0.45)
+            {
+                var p = pockets[_rng.Next(pockets.Count)];
+                float px = p.X + p.Width * (0.2f + (float)_rng.NextDouble() * 0.6f);
+                float py = p.Y + p.Height * (0.2f + (float)_rng.NextDouble() * 0.6f);
+                return new Vector2(px, py);
+            }
+
+            float y;
+            if (card.Kind == CardKind.Building)
+            {
+                float offset = 70f + (float)_rng.NextDouble() * 40f;
+                y = sideIsEnemy ? _arenaRect.Center.Y - offset : _arenaRect.Center.Y + offset;
+            }
+            else
+            {
+                var laneThreats = foes.Where(u => Math.Abs(u.Pos.X - laneX) < _arenaRect.Width * 0.35f &&
+                    (sideIsEnemy ? u.Pos.Y < _arenaRect.Center.Y : u.Pos.Y > _arenaRect.Center.Y)).ToList();
+                if (laneThreats.Count > 0)
+                {
+                    float ty = sideIsEnemy ? laneThreats.Min(u => u.Pos.Y) : laneThreats.Max(u => u.Pos.Y);
+                    y = sideIsEnemy ? Math.Max(_arenaRect.Top + 30f, ty - 50f)
+                                    : Math.Min(_arenaRect.Bottom - 30f, ty + 50f);
+                }
+                else
+                {
+                    float band = _arenaRect.Height * 0.18f;
+                    y = sideIsEnemy ? _arenaRect.Top + 90f + (float)_rng.NextDouble() * band
+                                    : _arenaRect.Bottom - 90f - (float)_rng.NextDouble() * band;
+                }
+            }
             float x = laneX + ((float)_rng.NextDouble() - 0.5f) * 24f;
             return new Vector2(x, y);
         }
@@ -2662,6 +2891,7 @@ namespace LumiaRoyale.Game
 
             DrawHomeTopBar();
             DrawHomeBanner();
+            DrawHomeArenaTitle();
             DrawHomeArena();
             DrawHomeControls();
             DrawHomeChests();
@@ -2721,123 +2951,59 @@ namespace LumiaRoyale.Game
             DrawBeveledButton(GetNavBattleRect(), "BATALHA", _homeTab == 0);
         }
 
+        private void DrawHomeArenaTitle()
+        {
+            var t = GetHomeArenaTitleRect();
+            DrawRect(new Rectangle(t.X + 3, t.Y + 3, t.Width, t.Height), new Color(0, 0, 0, 110));
+            DrawRect(t, new Color(6, 10, 22, 238));
+            for (int x = t.X + 2; x < t.Right - 2; x += 2)
+                DrawRect(new Rectangle(x, t.Y + 2, 2, t.Height - 4),
+                         Color.Lerp(Se98TitleA, Se98TitleB, (x - t.X) / (float)t.Width));
+            DrawRect(t, new Color(150, 180, 220), 1);
+            DrawRect(new Rectangle(t.X + 4, t.Bottom - 4, t.Width - 8, 2), new Color(10, 36, 106));
+
+            const string title = "ARENA 1 - VALE DO VOID";
+            DrawPixelText(title, t.Center.X - title.Length * 4, t.Y + 8, 2, Color.White);
+        }
+
         private void DrawHomeArena()
         {
             var r = GetHomeArenaRect();
             DrawRect(r, new Color(6, 18, 36));
-            if (_arenaTex != null)
-                _spriteBatch.Draw(_arenaTex, r, Color.White * 0.5f);
-            DrawRect(r, new Color(8, 12, 26, 100), 3);
 
-            int midY = r.Center.Y;
-            var river = new Rectangle(r.X, midY - 13, r.Width, 26);
-            DrawRect(river, new Color(52, 120, 190, 205));
-            int drift = (int)(_animTime * 16f) % 24;
-            for (int x = r.X - 24 + drift; x < r.Right; x += 24)
+            if (_demoReady && _arenaRect.Width > 0 && _arenaRect.Height > 0)
             {
-                int oy = (int)(Math.Sin(x * 0.05f + _animTime * 2f) * 2f);
-                DrawRect(new Rectangle(x, river.Y + 7 + oy, 12, 2), new Color(210, 238, 255, 120));
+                // A simulação roda nas coordenadas da arena cheia; aqui ela é
+                // redesenhada escalada para a mini arena, com as funções reais do jogo.
+                float sx = r.Width / (float)_arenaRect.Width;
+                float sy = r.Height / (float)_arenaRect.Height;
+                var m = Matrix.CreateScale(sx, sy, 1f) *
+                        Matrix.CreateTranslation(r.X - _arenaRect.X * sx, r.Y - _arenaRect.Y * sy, 0f);
+
+                _spriteBatch.End();
+                _spriteBatch.Begin(samplerState: SamplerState.PointClamp, transformMatrix: m);
+                DrawArena();
+                DrawTowers();
+                DrawUnits();
+                DrawFx();
+                _spriteBatch.End();
+                _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+
+                int blueCount = _units.Count(u => u.Alive && !u.IsEnemy);
+                int redCount = _units.Count(u => u.Alive && u.IsEnemy);
+                string score = blueCount + " x " + redCount;
+                var box = new Rectangle(r.Center.X - HX(34), r.Bottom - HY(24), HX(68), HY(18));
+                DrawRect(box, new Color(6, 10, 22, 225));
+                DrawRect(box, new Color(120, 160, 220), 1);
+                DrawPixelText(score, r.Center.X - score.Length * 4, r.Bottom - HY(20), 2, Color.White);
+            }
+            else
+            {
+                DrawRect(new Rectangle(r.X + 8, r.Y + 8, r.Width - 16, r.Height - 16),
+                         new Color(20, 34, 70));
             }
 
-            int lx = r.X + r.Width / 4;
-            int rx = r.X + 3 * r.Width / 4;
-            DrawHomeBridge(lx, midY);
-            DrawHomeBridge(rx, midY);
-
-            DrawHomeTower(new Vector2(lx, r.Y + 66), true, false);
-            DrawHomeTower(new Vector2(rx, r.Y + 66), true, false);
-            DrawHomeTower(new Vector2(r.Center.X, r.Y + 30), true, true);
-            DrawHomeTower(new Vector2(lx, r.Bottom - 66), false, false);
-            DrawHomeTower(new Vector2(rx, r.Bottom - 66), false, false);
-            DrawHomeTower(new Vector2(r.Center.X, r.Bottom - 30), false, true);
-
-            // Confronto rápido azul x vermelho, em loop de 2 segundos.
-            float t = (_animTime * 0.5f) % 1f;
-            float approach = MathHelper.Clamp(t / 0.45f, 0f, 1f);
-            bool clash = t >= 0.42f && t < 0.78f;
-            float blueX = MathHelper.Lerp(r.X + 34f, r.Center.X - 16f, approach);
-            float redX = MathHelper.Lerp(r.Right - 34f, r.Center.X + 16f, approach);
-            if (t >= 0.78f)
-            {
-                float back = (t - 0.78f) / 0.22f;
-                redX = MathHelper.Lerp(r.Center.X + 16f, r.Right - 34f, back);
-                blueX = MathHelper.Lerp(r.Center.X - 16f, r.Center.X - 36f, back);
-            }
-
-            int blueDir = PunyDirGroup(new Vector2(1f, 0f));
-            int redDir = PunyDirGroup(new Vector2(-1f, 0f));
-            int walkFrame = (int)(_animTime * 9f) % 3;
-            int atkFrame = Math.Min(2, (int)((t - 0.42f) / 0.06f) % 3);
-            int row = clash ? 2 : 1;
-            int frame = clash ? atkFrame : walkFrame;
-
-            for (int i = 0; i < 2; i++)
-            {
-                int y = midY - 30 - i * 16;
-                DrawHomeDemoUnit(_punySoldierTex, (int)blueX, y, blueDir, row, frame, 30, new Color(120, 180, 255));
-                DrawHomeDemoUnit(_punyWarriorTex, (int)redX, y, redDir, row, frame, 30, new Color(255, 130, 120));
-            }
-
-            if (clash)
-            {
-                int cx = (int)((blueX + redX) / 2f);
-                int cy = midY - 38;
-                int j = (int)(Math.Sin(_animTime * 22f) * 3f);
-                for (int k = 0; k < 4; k++)
-                {
-                    Color sc = k % 2 == 0 ? new Color(255, 225, 120) : new Color(255, 255, 255);
-                    DrawRect(new Rectangle(cx - 8 + k * 5 - j, cy - 8 + (k % 2) * 12, 4, 4), sc * 0.9f);
-                }
-            }
-
-            var plaque = new Rectangle(r.X + 6, r.Y + 6, r.Width - 12, HY(24));
-            DrawRect(plaque, new Color(6, 10, 22, 225));
-            DrawRect(plaque, new Color(120, 160, 220), 1);
-            DrawPixelText("ARENA 1", r.Center.X - 28, r.Y + HY(10), 2, Color.White);
-        }
-
-        private void DrawHomeDemoUnit(Texture2D tex, int x, int y, int dir, int row, int frame, int size, Color team)
-        {
-            var dst = new Rectangle(x - size / 2, y - size / 2, size, size);
-            DrawRect(new Rectangle(dst.X + 4, dst.Bottom - 3, dst.Width - 8, 3), new Color(0, 0, 0, 55));
-            if (tex != null)
-            {
-                var src = new Rectangle((dir * 3 + frame) * PunyCell, row * PunyCell, PunyCell, PunyCell);
-                _spriteBatch.Draw(tex, dst, src, Color.Lerp(Color.White, team, 0.12f));
-            }
-            else DrawRect(dst, team);
-        }
-
-        private void DrawHomeBridge(int cx, int cy)
-        {
-            var b = new Rectangle(cx - 22, cy - 18, 44, 36);
-            DrawRect(b, new Color(132, 102, 74));
-            DrawRect(b, new Color(88, 64, 44), 2);
-            for (int y = b.Y + 4; y < b.Bottom - 3; y += 6)
-                DrawRect(new Rectangle(b.X + 3, y, b.Width - 6, 2), new Color(96, 70, 48, 170));
-        }
-
-        private void DrawHomeTower(Vector2 pos, bool enemy, bool main)
-        {
-            int w = main ? 30 : 22;
-            int h = main ? 42 : 32;
-            var b = new Rectangle((int)pos.X - w / 2, (int)pos.Y - h / 2, w, h);
-            Color face = enemy ? new Color(208, 74, 74) : new Color(74, 146, 226);
-            Color dark = enemy ? new Color(120, 36, 36) : new Color(36, 78, 132);
-
-            DrawRect(new Rectangle(b.X + 6, b.Bottom - 6, w - 12, 7), new Color(24, 32, 30, 120));
-            DrawRect(b, dark);
-            DrawRect(b, face, 2);
-            DrawRect(new Rectangle(b.X + 3, b.Y + 3, w - 6, 4), new Color(255, 255, 255, 70));
-
-            if (main)
-            {
-                int pulse = (int)(Math.Sin(_animTime * 5f) * 18f);
-                Color crown = new Color(255, ClampByte(220 - pulse), 110, 230);
-                DrawRect(new Rectangle(b.X + w / 2 - 9, b.Y - 6, 18, 4), crown);
-                for (int i = -1; i <= 1; i++)
-                    DrawRect(new Rectangle(b.X + w / 2 + i * 5 - 2, b.Y - 10, 4, 5), crown);
-            }
+            DrawRect(r, new Color(8, 12, 26, 90), 3);
         }
 
         private void DrawHomeTopBar()

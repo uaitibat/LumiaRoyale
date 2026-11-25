@@ -25,8 +25,23 @@ namespace LumiaRoyale.Game
         private Texture2D _colossoTex;
         private Texture2D _torretaTex;
         private Texture2D _arenaTex;
+        private Texture2D _arenaBgTex;
         private Texture2D _homeBgTex;
         private Texture2D _homeBannerTex;
+
+        // Proporções medidas no cenário (rio e pontes) para a lógica casar com a arte.
+        private const float ArenaRiverHalfNorm = 0.060f;
+        private const float ArenaBridgeHalfNorm = 0.068f;
+
+        private float RiverHalf
+        {
+            get { return _arenaBgTex != null ? _arenaRect.Height * ArenaRiverHalfNorm : 14f; }
+        }
+
+        private float BridgeHalf
+        {
+            get { return _arenaBgTex != null ? _arenaRect.Width * ArenaBridgeHalfNorm : 24f; }
+        }
 
         private float _animTime;
 
@@ -298,6 +313,7 @@ namespace LumiaRoyale.Game
                 var tex = LoadTex("Assets/Sprites/" + def.Sprite);
                 if (tex != null) _sprites[def.Sprite] = tex;
             }
+            _arenaBgTex = LoadTex("Assets/ArenaForest.jpg");
             _homeBgTex = LoadTex("Assets/HomeBackground.jpg");
             _homeBannerTex = LoadBannerTexture("Assets/HomeBanner.jpg");
         }
@@ -1006,7 +1022,7 @@ namespace LumiaRoyale.Game
             if (!_arenaRect.Contains((int)pos.X, (int)pos.Y)) return false;
             if (card.SpellEffect) return true;
 
-            int midY = _arenaRect.Center.Y + 20;
+            int midY = (int)(_arenaRect.Center.Y + RiverHalf + 4f);
             bool onOwnSide = enemy ? pos.Y <= midY : pos.Y >= midY;
             if (onOwnSide) return true;
 
@@ -1727,14 +1743,14 @@ namespace LumiaRoyale.Game
             if (u.Def.Flying) return; // aéreas cruzam o rio fora das pontes
 
             float bridgeY = _arenaRect.Center.Y;
-            float riverTop = bridgeY - 14f;
-            float riverBottom = bridgeY + 14f;
+            float riverTop = bridgeY - RiverHalf;
+            float riverBottom = bridgeY + RiverHalf;
             bool inRiver = u.Pos.Y > riverTop && u.Pos.Y < riverBottom;
             if (!inRiver) return;
 
             float leftBridge = _arenaRect.Left + _arenaRect.Width * 0.25f;
             float rightBridge = _arenaRect.Left + _arenaRect.Width * 0.75f;
-            float bridgeHalf = 24f;
+            float bridgeHalf = BridgeHalf;
             bool onBridge = Math.Abs(u.Pos.X - leftBridge) <= bridgeHalf || Math.Abs(u.Pos.X - rightBridge) <= bridgeHalf;
             if (onBridge) return;
 
@@ -1838,8 +1854,8 @@ namespace LumiaRoyale.Game
             if (u.Def.Flying) return target.pos;
 
             float bridgeY = _arenaRect.Center.Y;
-            float riverTop = bridgeY - 14f;
-            float riverBottom = bridgeY + 14f;
+            float riverTop = bridgeY - RiverHalf;
+            float riverBottom = bridgeY + RiverHalf;
             bool onMySide = u.IsEnemy ? u.Pos.Y < riverTop : u.Pos.Y > riverBottom;
             bool onEnemySide = u.IsEnemy ? u.Pos.Y > riverBottom : u.Pos.Y < riverTop;
             bool targetOnOtherSide = u.IsEnemy ? target.pos.Y > riverBottom : target.pos.Y < riverTop;
@@ -2015,6 +2031,9 @@ namespace LumiaRoyale.Game
 
         private void BuildArenaTexture()
         {
+            // Com o cenário em imagem não precisamos da textura procedural.
+            if (_arenaBgTex != null) return;
+
             int w = Math.Max(1, _arenaRect.Width);
             int h = Math.Max(1, _arenaRect.Height);
             if (_arenaTex != null && _arenaTex.Width == w && _arenaTex.Height == h) return;
@@ -2048,6 +2067,18 @@ namespace LumiaRoyale.Game
 
         private void DrawArena()
         {
+            if (_arenaBgTex != null)
+            {
+                DrawArenaBackground();
+
+                // Moldura discreta para o cenário não encostar no HUD.
+                DrawRect(new Rectangle(_arenaRect.Left, _arenaRect.Top, _arenaRect.Width, 2), new Color(6, 10, 16, 170));
+                DrawRect(new Rectangle(_arenaRect.Left, _arenaRect.Bottom - 2, _arenaRect.Width, 2), new Color(6, 10, 16, 170));
+                DrawRect(new Rectangle(_arenaRect.Left, _arenaRect.Top, 2, _arenaRect.Height), new Color(6, 10, 16, 120));
+                DrawRect(new Rectangle(_arenaRect.Right - 2, _arenaRect.Top, 2, _arenaRect.Height), new Color(6, 10, 16, 120));
+                return;
+            }
+
             if (_arenaTex != null)
                 _spriteBatch.Draw(_arenaTex, _arenaRect, Color.White);
             else
@@ -2074,6 +2105,34 @@ namespace LumiaRoyale.Game
 
             // center line hint
             DrawRect(new Rectangle(_arenaRect.Left, _arenaRect.Center.Y + 18, _arenaRect.Width, 2), new Color(255, 255, 255, 35));
+        }
+
+        // Recorte "cover" do cenário: preserva a proporção da arte e centraliza
+        // o rio na linha média da arena (as pontes já caem em 25% e 75%).
+        private void DrawArenaBackground()
+        {
+            var tex = _arenaBgTex;
+            if (tex == null || _arenaRect.Width <= 0 || _arenaRect.Height <= 0) return;
+
+            float destAspect = _arenaRect.Width / (float)_arenaRect.Height;
+            float texAspect = tex.Width / (float)tex.Height;
+            Rectangle src;
+            if (texAspect > destAspect)
+            {
+                int sw = Math.Max(1, (int)(tex.Height * destAspect));
+                src = new Rectangle((tex.Width - sw) / 2, 0, sw, tex.Height);
+            }
+            else
+            {
+                int sh = Math.Min(tex.Height, Math.Max(1, (int)(tex.Width / destAspect)));
+                int cy = (int)(tex.Height * 0.4927f); // centro do rio na imagem
+                int sy = cy - sh / 2;
+                if (sy < 0) sy = 0;
+                if (sy + sh > tex.Height) sy = tex.Height - sh;
+                src = new Rectangle(0, sy, tex.Width, sh);
+            }
+
+            _spriteBatch.Draw(tex, _arenaRect, src, Color.White);
         }
 
         private void DrawBridge(int centerX)
@@ -2105,7 +2164,7 @@ namespace LumiaRoyale.Game
                 if (king == null) continue;
 
                 bool playerLane = t.IsEnemy; // lateral inimiga caiu => caminho do jogador
-                float yStart = playerLane ? _arenaRect.Center.Y - 14f : _arenaRect.Center.Y + 14f;
+                float yStart = playerLane ? _arenaRect.Center.Y - RiverHalf : _arenaRect.Center.Y + RiverHalf;
                 float yEnd = playerLane ? king.Pos.Y + 58f : king.Pos.Y - 58f;
                 int y = (int)Math.Min(yStart, yEnd);
                 int h = (int)Math.Max(8f, Math.Abs(yEnd - yStart));
@@ -2139,7 +2198,7 @@ namespace LumiaRoyale.Game
                 DrawRect(_arenaRect, SpawnAreaBorder, 2);
                 return;
             }
-            int midY = _arenaRect.Center.Y + 20;
+            int midY = (int)(_arenaRect.Center.Y + RiverHalf + 4f);
             var allowed = new Rectangle(_arenaRect.X, midY, _arenaRect.Width, _arenaRect.Bottom - midY);
             DrawRect(allowed, SpawnAreaFill);
             DrawRect(allowed, SpawnAreaBorder, 2);
@@ -2160,7 +2219,7 @@ namespace LumiaRoyale.Game
             if (sideTowers.Count == 0) return pockets;
 
             // Borda da ponte (rio) que separa os lados.
-            float bridgeEdgeY = enemyPlayer ? _arenaRect.Center.Y + 14f : _arenaRect.Center.Y - 14f;
+            float bridgeEdgeY = enemyPlayer ? _arenaRect.Center.Y + RiverHalf : _arenaRect.Center.Y - RiverHalf;
 
             // Com as duas torres laterais caídas: retângulo largo, da ponte até perto do rei.
             if (sideTowers.All(t => !t.Alive))

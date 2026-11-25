@@ -30,7 +30,7 @@ namespace LumiaRoyale.Game
         private Texture2D _homeBannerTex;
 
         // Versão exibida na home para confirmar qual APPX está instalado.
-        private const string BuildTag = "V 1.1.8";
+        private const string BuildTag = "V 1.1.9";
 
         private ArenaDef _arenaDef;
         private string _arenaId = "vale";
@@ -3649,8 +3649,8 @@ namespace LumiaRoyale.Game
         {
             var buttons = GetHomePlayRect();
             string reset = "RESET EM " + ChestResetLabel();
-            DrawPixelText(reset, GraphicsDevice.Viewport.Width / 2 - reset.Length * 2,
-                          buttons.Bottom + HY(2), 1, new Color(150, 175, 210));
+            DrawPixelText(reset, GraphicsDevice.Viewport.Width / 2 - reset.Length * 4,
+                          buttons.Bottom + HY(1), 2, new Color(170, 195, 230));
 
             for (int i = 0; i < 4; i++)
             {

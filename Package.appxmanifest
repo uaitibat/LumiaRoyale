@@ -3,7 +3,7 @@
          xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest"
          xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
          IgnorableNamespaces="uap mp">
-  <Identity Name="LumiaRoyale" Publisher="CN=uaiti" Version="1.1.4.0" />
+  <Identity Name="LumiaRoyale" Publisher="CN=uaiti" Version="1.1.5.0" />
   <mp:PhoneIdentity PhoneProductId="b7e2a1d4-6c3f-4b8a-9d5e-1f2a3b4c5d6e" PhonePublisherId="00000000-0000-0000-0000-000000000000" />
   <Properties>
     <DisplayName>LumiaRoyale</DisplayName>
@@ -22,7 +22,7 @@
                           Square44x44Logo="Assets\Square44x44Logo.png" Description="LumiaRoyale - jogo de arena com cartas, original para W10M"
                           BackgroundColor="#1B4D3E">
         <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
-        <uap:SplashScreen Image="Assets\SplashScreen.png" BackgroundColor="#080C1A" />
+        <uap:SplashScreen Image="Assets\SplashScreen.png" BackgroundColor="transparent" />
         <uap:InitialRotationPreference>
           <uap:Rotation Preference="portrait" />
         </uap:InitialRotationPreference>

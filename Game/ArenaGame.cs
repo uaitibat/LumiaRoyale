@@ -34,7 +34,7 @@ namespace LumiaRoyale.Game
         private const float ArenaBridgeHalfNorm = 0.068f;
 
         // Versão exibida na home para confirmar qual APPX está instalado.
-        private const string BuildTag = "V 1.0.3";
+        private const string BuildTag = "V 1.0.4";
 
         private float RiverHalf
         {
@@ -318,7 +318,8 @@ namespace LumiaRoyale.Game
             }
             // PNG primeiro (decodifica de forma mais confiável no W10M) e JPEG como reserva.
             _arenaBgTex = LoadTex("Assets/ArenaForest.png") ?? LoadTex("Assets/ArenaForest.jpg");
-            _homeBgTex = LoadTex("Assets/HomeBackground.jpg");
+            // PNG primeiro: neste W10M JPEG basico gerado externamente falha em decoder.
+            _homeBgTex = LoadTex("Assets/HomeBackground.png") ?? LoadTex("Assets/HomeBackground.jpg");
             _homeBannerTex = LoadBannerTexture("Assets/HomeBanner.jpg");
         }
 

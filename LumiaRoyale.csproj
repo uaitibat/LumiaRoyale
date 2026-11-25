@@ -121,6 +121,7 @@
     <Content Include="Assets\ArenaForest.png" />
     <Content Include="Assets\ArenaForest.jpg" />
     <Content Include="Assets\HomeBanner.jpg" />
+    <Content Include="Assets\HomeBackground.png" />
     <Content Include="Assets\HomeBackground.jpg" />
   </ItemGroup>
   <ItemGroup>

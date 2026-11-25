@@ -1554,7 +1554,7 @@ namespace LumiaRoyale.Game
                     DrawRect(new Rectangle(hbg.X + hbg.Width * i / 4, hbg.Y, 1, hbg.Height), new Color(0, 0, 0, 110));
                 DrawRect(hbg, new Color(255, 255, 255, 70), 1);
 
-                DrawPixelText("L" + t.Level, body.Center.X - 4, body.Bottom + 1, 1,
+                DrawPixelText("L" + t.Level, body.Center.X - 8, body.Bottom + 1, 2,
                               new Color(225, 232, 245, 190));
                 if (t.IsMain) DrawKingIndicator(t, body);
             }
@@ -1591,8 +1591,8 @@ namespace LumiaRoyale.Game
             }
             else
             {
-                DrawPixelText("Z", ix - 2, iy + 2, 1, new Color(215, 230, 250, 150));
-                DrawPixelText("Z", ix + 7, iy - 4, 1, new Color(215, 230, 250, 85));
+                DrawPixelText("Z", ix - 4, iy + 1, 2, new Color(215, 230, 250, 150));
+                DrawPixelText("Z", ix + 6, iy - 5, 2, new Color(215, 230, 250, 85));
             }
         }
 
@@ -1956,8 +1956,9 @@ namespace LumiaRoyale.Game
                 if (f.Kind == "damage")
                 {
                     if (string.IsNullOrEmpty(f.Text)) continue;
-                    DrawPixelText(f.Text, cx + 1, cy + 1, 1, Color.Black * (a * 0.75f));
-                    DrawPixelText(f.Text, cx, cy, 1, f.Color * a);
+                    int tx = cx - f.Text.Length * 4;
+                    DrawPixelText(f.Text, tx + 1, cy + 1, 2, Color.Black * (a * 0.75f));
+                    DrawPixelText(f.Text, tx, cy, 2, f.Color * a);
                     continue;
                 }
 
@@ -2011,15 +2012,15 @@ namespace LumiaRoyale.Game
                 float t = x / (float)Math.Max(1, w - 1);
                 DrawRect(new Rectangle(x, 0, 2, titleH), Color.Lerp(Se98TitleA, Se98TitleB, t));
             }
-            DrawPixelText("LUMIAROYALE - ARENA", 8, 6, 1, Color.White);
+            DrawPixelText("LUMIAROYALE - ARENA", 8, 6, 2, Color.White);
 
             int sec = Math.Max(0, (int)Math.Ceiling(_timeLeft));
             string timeStr = (sec / 60) + ":" + (sec % 60).ToString("00");
             DrawBeveledPanel(new Rectangle(w / 2 - 52, 24, 104, 26), false);
-            DrawPixelText(timeStr, w / 2 - 24, 32, 2, sec <= 30 ? new Color(200, 30, 30) : Se98Text);
+            DrawPixelText(timeStr, w / 2 - 24, 30, 3, sec <= 30 ? new Color(200, 30, 30) : Se98Text);
 
             DrawBeveledPanel(new Rectangle(w - 96, 24, 88, 26), false);
-            DrawPixelText(_playerCrowns + "-" + _enemyCrowns, w - 72, 32, 2, Se98Text);
+            DrawPixelText(_playerCrowns + "-" + _enemyCrowns, w - 70, 30, 3, Se98Text);
 
             if (_matchState == "playing")
             {
@@ -2050,10 +2051,10 @@ namespace LumiaRoyale.Game
                 int x = bg.X + (int)(barW * (i / 10f));
                 DrawRect(new Rectangle(x, bg.Y + 3, 1, barH - 6), Se98Shadow);
             }
-            DrawPixelText(((int)_mana) + "/10", barX + 8, barY + 8, 2, Se98Text);
+            DrawPixelText(((int)_mana) + "/10", barX + 8, barY + 6, 3, Se98Text);
 
             string msg = _statusTimer > 0 ? _status : (_selectedHand >= 0 ? "TOQUE NA ARENA" : "ESCOLHA UMA CARTA");
-            DrawPixelText(msg.ToUpperInvariant(), 10, 86, 1, Se98Text);
+            DrawPixelText(msg.ToUpperInvariant(), 10, 84, 2, Se98Text);
         }
 
         private void DrawCards()
@@ -2273,8 +2274,8 @@ namespace LumiaRoyale.Game
 
             int slide = (int)((1f - titleIn) * 48f);
             DrawPixelText("LUMIAROYALE", vw / 2 - 11 * 2 * 4 + slide, barY - 36, 4, Color.White * fade);
-            DrawPixelText("ARENA DE CARTAS", vw / 2 - 15 * 2 * 2, barY - 6, 2, new Color(161, 196, 233) * subIn);
-            DrawPixelText("VOID / SE98", vw / 2 - 11 * 2, barY + 16, 1, new Color(120, 150, 210) * subIn);
+            DrawPixelText("ARENA DE CARTAS", vw / 2 - 15 * 2 * 3, barY - 6, 3, new Color(161, 196, 233) * subIn);
+            DrawPixelText("VOID / SE98", vw / 2 - 11 * 2 * 2, barY + 14, 2, new Color(120, 150, 210) * subIn);
 
             DrawBeveledPanel(new Rectangle(barX, barY + 34, barW, 14), true);
             int fill = (int)(barW * Clamp01(t / 2.6f));
@@ -2282,7 +2283,7 @@ namespace LumiaRoyale.Game
                 DrawRect(new Rectangle(x, barY + 36, 2, 10), Se98Selected);
 
             if (t > 1.4f)
-                DrawPixelText("TOQUE PARA PULAR", vw / 2 - 16 * 2, barY + 60, 1, Se98Face * 0.7f);
+                DrawPixelText("TOQUE PARA PULAR", vw / 2 - 16 * 2 * 2, barY + 58, 2, Se98Face * 0.7f);
         }
 
         private void DrawVoidGrid(int w, int h)
@@ -2305,8 +2306,8 @@ namespace LumiaRoyale.Game
                 DrawRect(new Rectangle(x, box.Y + 2, 2, 26), Color.Lerp(Se98TitleA, Se98TitleB, (x - box.X) / (float)box.Width));
 
             DrawPixelText("LUMIAROYALE", box.X + 66, box.Y + 8, 4, Color.White);
-            DrawPixelText("ARENA DE CARTAS", box.X + 88, box.Y + 44, 2, Se98Text);
-            DrawPixelText("TORRES NIVEL " + _towerLevel, box.X + 52, box.Y + 68, 1, Se98Shadow);
+            DrawPixelText("ARENA DE CARTAS", box.X + 100, box.Y + 42, 3, Se98Text);
+            DrawPixelText("TORRES NIVEL " + _towerLevel, box.X + 134, box.Y + 68, 2, Se98Shadow);
 
             DrawBeveledButton(GetHomePlayRect(), "JOGAR");
             DrawBeveledButton(GetHomeDifficultyRect(), "DIFICULDADE: " + GetDifficultyName(), true);
@@ -2317,18 +2318,18 @@ namespace LumiaRoyale.Game
                 var help = new Rectangle(box.X + 20, box.Y + 248, box.Width - 40, 108);
                 DrawRect(help, new Color(8, 12, 26, 210));
                 DrawBeveledPanel(help, true);
-                DrawPixelText("TOQUE UMA CARTA E DEPOIS O CAMPO", box.X + 30, box.Y + 258, 2, Se98Text);
-                DrawPixelText("VERMELHO = ONDE VOCE PODE POR", box.X + 30, box.Y + 282, 2, Se98Text);
-                DrawPixelText("DERRUBE AS LATERAIS E O REI", box.X + 30, box.Y + 306, 2, Se98Text);
-                DrawPixelText("A MANA VOLTA COM O TEMPO", box.X + 30, box.Y + 330, 2, Se98Shadow);
+                DrawPixelText("TOQUE CARTA E DEPOIS O CAMPO", box.X + 22, box.Y + 256, 3, Se98Text);
+                DrawPixelText("VERMELHO - AREA DE DEPLOY", box.X + 22, box.Y + 278, 3, Se98Text);
+                DrawPixelText("DERRUBE LATERAIS E O REI", box.X + 22, box.Y + 300, 3, Se98Text);
+                DrawPixelText("A MANA VOLTA COM O TEMPO", box.X + 22, box.Y + 322, 3, Se98Shadow);
             }
             else
             {
-                DrawPixelText("DERRUBE O REI PARA GANHAR", box.X + 52, box.Y + 262, 2, Se98Text);
-                DrawPixelText("A IA REAGE A DIFICULDADE", box.X + 52, box.Y + 288, 2, Se98Shadow);
+                DrawPixelText("DERRUBE O REI PARA GANHAR", box.X + 40, box.Y + 260, 3, Se98Text);
+                DrawPixelText("A IA REAGE A DIFICULDADE", box.X + 46, box.Y + 290, 3, Se98Shadow);
             }
 
-            DrawPixelText("SE98 / VOID - LUMIA 640", box.X + 76, box.Y + 356, 1, new Color(150, 170, 200));
+            DrawPixelText("SE98 / VOID - LUMIA 640", box.X + 98, box.Y + 354, 2, new Color(150, 170, 200));
         }
 
         private void DrawEndOverlay()
@@ -2358,11 +2359,11 @@ namespace LumiaRoyale.Game
             string title = win ? "VITORIA!" : "DERROTA";
             DrawPixelText(title, ebox.X + (win ? 122 : 132), ebox.Y + 10, 4, Color.White);
             if (!string.IsNullOrEmpty(_status))
-                DrawPixelText(_status, ebox.X + (360 - _status.Length * 4) / 2, ebox.Y + 38, 1, Se98Shadow);
-            DrawPixelText("COROAS " + _playerCrowns + " X " + _enemyCrowns, ebox.X + 100, ebox.Y + 58, 2, Se98Text);
-            DrawPixelText("TORRES " + _enemyTowersLost + " X " + _playerTowersLost, ebox.X + 100, ebox.Y + 80, 2, Se98Text);
+                DrawPixelText(_status, ebox.X + (360 - _status.Length * 8) / 2, ebox.Y + 36, 2, Se98Shadow);
+            DrawPixelText("COROAS " + _playerCrowns + " X " + _enemyCrowns, ebox.X + 100, ebox.Y + 58, 3, Se98Text);
+            DrawPixelText("TORRES " + _enemyTowersLost + " X " + _playerTowersLost, ebox.X + 100, ebox.Y + 80, 3, Se98Text);
             int sec = Math.Max(0, (int)Math.Ceiling(_timeLeft));
-            DrawPixelText("TEMPO " + (sec / 60) + ":" + (sec % 60).ToString("00"), ebox.X + 124, ebox.Y + 102, 2, Se98Text);
+            DrawPixelText("TEMPO " + (sec / 60) + ":" + (sec % 60).ToString("00"), ebox.X + 112, ebox.Y + 102, 3, Se98Text);
 
             DrawBeveledButton(GetEndRematchRect(), "REVANCHE");
             DrawBeveledButton(GetEndMenuRect(), "MENU");
@@ -2393,11 +2394,11 @@ namespace LumiaRoyale.Game
             if (active)
             {
                 DrawRect(new Rectangle(r.X + 2, r.Y + 2, r.Width - 4, r.Height - 4), Se98Selected);
-                DrawPixelText(label, r.Center.X - label.Length * 4, r.Center.Y - 4, 2, Color.White);
+                DrawPixelText(label, r.Center.X - label.Length * 6, r.Center.Y - 7, 3, Color.White);
             }
             else
             {
-                DrawPixelText(label, r.Center.X - label.Length * 4, r.Center.Y - 4, 2, Se98Text);
+                DrawPixelText(label, r.Center.X - label.Length * 6, r.Center.Y - 7, 3, Se98Text);
             }
         }
 

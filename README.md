@@ -12,7 +12,7 @@ Esqueleto inicial de um jogo original de arena com cartas para **Windows 10 Mobi
 - Loop fixo ~30 FPS
 - 2 arenas próprias em tela cheia (`Assets/ArenaForest.png` e `Assets/ArenaDesert.png`), cada uma com rio e duas pontes alinhados à lógica; escolha na home tocando na mini arena (opção salva no dispositivo); 3 torres por lado
 - Mana, coleção de 30 unidades originais (6 corpo a corpo, 5 atiradores, 4 tanques, 4 rápidas, 4 mágicas, 3 aéreas, 4 especiais) com deck de 8 escolhido na home
-- Combate básico, torres com nível, baús e IA com escolha de lane independente (também na demonstração da home)
+- Combate básico, torres com nível, baús com reset a cada 6h e IA com escolha de lane independente (também na demonstração da home)
 - Sprites CC0: Puny Characters + extensão Orcs (18 personagens com idle, andar, ataque, dano e morte em 8 direções; licença em `Assets/Sprites/Puny/LICENSE.txt`)
 - CI GitHub Actions: compila ARM, assina com `certs/ci-legacy.b64` e publica `.appx` em `latest`
 

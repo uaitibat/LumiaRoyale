@@ -30,7 +30,7 @@ namespace LumiaRoyale.Game
         private Texture2D _homeBannerTex;
 
         // Versão exibida na home para confirmar qual APPX está instalado.
-        private const string BuildTag = "V 1.1.7";
+        private const string BuildTag = "V 1.1.8";
 
         private ArenaDef _arenaDef;
         private string _arenaId = "vale";
@@ -133,6 +133,8 @@ namespace LumiaRoyale.Game
         private int _gems;
         private int[] _chestProgress = new int[4];
         private bool[] _chestOpened = new bool[4];
+        private static readonly TimeSpan ChestResetInterval = TimeSpan.FromHours(6);
+        private DateTimeOffset _nextChestResetUtc;
         private int _homeTab; // 0 = batalha, 1 = cartas
         private int _selectedDeckCard = -1; // índice na coleção de 30, não no deck
         private int _cardPage;
@@ -195,6 +197,14 @@ namespace LumiaRoyale.Game
             return 0;
         }
 
+        private static long ReadLong(IDictionary<string, object> values, string key)
+        {
+            object raw;
+            if (values.TryGetValue(key, out raw) && raw is long) return (long)raw;
+            if (raw is int) return (int)raw;
+            return 0;
+        }
+
         private static bool ReadBool(IDictionary<string, object> values, string key)
         {
             object raw;
@@ -214,6 +224,38 @@ namespace LumiaRoyale.Game
             return i >= 0 && i < _chestProgress.Length && !_chestOpened[i] && _chestProgress[i] >= 3;
         }
 
+        // Ciclo de 6h: os quatro baús voltam a ficar disponíveis do zero.
+        private void ResetChests()
+        {
+            for (int i = 0; i < _chestProgress.Length; i++)
+            {
+                _chestProgress[i] = 0;
+                _chestOpened[i] = false;
+            }
+        }
+
+        private string ChestResetLabel()
+        {
+            TimeSpan left = _nextChestResetUtc - DateTimeOffset.UtcNow;
+            if (left.Ticks < 0) left = TimeSpan.Zero;
+            int minutes = (int)Math.Ceiling(left.TotalMinutes);
+            int h = minutes / 60;
+            int m = minutes % 60;
+            return h.ToString("00", System.Globalization.CultureInfo.InvariantCulture) + ":" +
+                   m.ToString("00", System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        private void CheckChestReset()
+        {
+            if (_nextChestResetUtc == DateTimeOffset.MinValue) return;
+            if (DateTimeOffset.UtcNow < _nextChestResetUtc) return;
+
+            ResetChests();
+            _nextChestResetUtc = DateTimeOffset.UtcNow.Add(ChestResetInterval);
+            SaveProgress();
+            ShowHomeToast("BAUS RESETADOS");
+        }
+
         private void LoadProgress()
         {
             var v = ApplicationData.Current.LocalSettings.Values;
@@ -223,6 +265,7 @@ namespace LumiaRoyale.Game
             _crowns = ReadInt(v, "crowns");
             _coins = ReadInt(v, "coins");
             _gems = ReadInt(v, "gems");
+            long resetTicks = ReadLong(v, "chestResetTicks");
             int total = 0;
             for (int i = 0; i < _chestProgress.Length; i++)
             {
@@ -230,7 +273,8 @@ namespace LumiaRoyale.Game
                 total += _chestProgress[i];
             }
             // Migra saves antigos (contador único) para o progresso por baú.
-            if (total == 0)
+            // Depois do primeiro reset o Save já tem chestResetTicks e não migra de novo.
+            if (total == 0 && resetTicks <= 0)
             {
                 int oldWins = ReadInt(v, "chestWins");
                 bool oldReady = ReadBool(v, "chestReady");
@@ -239,6 +283,24 @@ namespace LumiaRoyale.Game
             }
             for (int i = 0; i < _chestOpened.Length; i++)
                 _chestOpened[i] = ReadBool(v, "chestOpened" + i);
+
+            // Reset dos baús a cada 6h. Saves antigos ganham uma janela nova;
+            // se o prazo já passou enquanto o app estava fechado, reseta agora.
+            if (resetTicks <= 0)
+            {
+                _nextChestResetUtc = DateTimeOffset.UtcNow.Add(ChestResetInterval);
+                v["chestResetTicks"] = _nextChestResetUtc.UtcTicks;
+            }
+            else
+            {
+                _nextChestResetUtc = new DateTimeOffset(resetTicks, TimeSpan.Zero);
+                if (DateTimeOffset.UtcNow >= _nextChestResetUtc)
+                {
+                    ResetChests();
+                    _nextChestResetUtc = DateTimeOffset.UtcNow.Add(ChestResetInterval);
+                    v["chestResetTicks"] = _nextChestResetUtc.UtcTicks;
+                }
+            }
 
             // Deck escolhido pelo jogador. Ids desconhecidos são descartados;
             // saves antigos continuam com os 8 personagens originais.
@@ -277,6 +339,7 @@ namespace LumiaRoyale.Game
                 v["chestOpened" + i] = _chestOpened[i];
             v["deckIds"] = string.Join(",", _deckIds);
             v["arenaId"] = _arenaId;
+            v["chestResetTicks"] = _nextChestResetUtc.UtcTicks;
         }
 
         private void ShowHomeToast(string text)
@@ -591,6 +654,7 @@ namespace LumiaRoyale.Game
             UpdateFx(dt);
             if (_statusTimer > 0) _statusTimer -= dt;
             if (_homeToastTimer > 0) _homeToastTimer -= dt;
+            CheckChestReset();
 
             if (_matchState == "intro")
             {
@@ -3583,6 +3647,11 @@ namespace LumiaRoyale.Game
 
         private void DrawHomeChests()
         {
+            var buttons = GetHomePlayRect();
+            string reset = "RESET EM " + ChestResetLabel();
+            DrawPixelText(reset, GraphicsDevice.Viewport.Width / 2 - reset.Length * 2,
+                          buttons.Bottom + HY(2), 1, new Color(150, 175, 210));
+
             for (int i = 0; i < 4; i++)
             {
                 var c = GetHomeChestRect(i);

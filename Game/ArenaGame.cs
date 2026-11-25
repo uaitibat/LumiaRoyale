@@ -1305,9 +1305,9 @@ namespace LumiaRoyale.Game
                 int x = (int)t.Pos.X - 26;
                 Color tint = playerLane ? new Color(120, 190, 255) : new Color(255, 130, 110);
 
-                DrawRect(new Rectangle(x, y, 52, h), new Color(tint.R, tint.G, tint.B, 26));
-                DrawRect(new Rectangle(x, y, 2, h), new Color(tint.R, tint.G, tint.B, 70));
-                DrawRect(new Rectangle(x + 50, y, 2, h), new Color(tint.R, tint.G, tint.B, 70));
+                DrawRect(new Rectangle(x, y, 52, h), new Color(tint.R, tint.G, tint.B, (byte)26));
+                DrawRect(new Rectangle(x, y, 2, h), new Color(tint.R, tint.G, tint.B, (byte)70));
+                DrawRect(new Rectangle(x + 50, y, 2, h), new Color(tint.R, tint.G, tint.B, (byte)70));
 
                 int dir = playerLane ? -1 : 1;
                 int drift = (int)(_animTime * 34f) % 48;
@@ -1316,7 +1316,7 @@ namespace LumiaRoyale.Game
                     int ay = dir < 0 ? y + h - off : y + off;
                     int ax = (int)t.Pos.X;
                     int a = 95 + (int)(Math.Sin(_animTime * 3f + off) * 25f);
-                    Color arrow = new Color(tint.R, tint.G, tint.B, ClampByte(a));
+                    Color arrow = new Color(tint.R, tint.G, tint.B, (byte)ClampByte(a));
                     int low = dir < 0 ? 3 : 0;
                     int high = dir < 0 ? 0 : 3;
                     DrawRect(new Rectangle(ax - 7, ay + low, 5, 2), arrow);

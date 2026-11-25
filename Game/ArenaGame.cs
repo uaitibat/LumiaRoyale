@@ -2396,9 +2396,10 @@ namespace LumiaRoyale.Game
             {
                 DrawTorretaSprite(b, team, u.HitFlash > 0);
             }
-            else if (tex != null)
+            else if (tex != null && (u.Def.Sprite ?? "").StartsWith("Puny/"))
             {
-                DrawTinySprite(u, tex, team);
+                // Muralha e Guardiao também são animados (idle/dano/ataque).
+                DrawPunyUnit(u, team);
             }
             else
             {
@@ -2527,27 +2528,6 @@ namespace LumiaRoyale.Game
             return new Rectangle(0, 0, PunyCell, PunyCell);
         }
 
-        // Desenha qualquer sprite novo do catálogo (Tiny Creatures / arte própria).
-        private bool DrawTinySprite(Unit u, Texture2D tex, Color team)
-        {
-            if (tex == null) return false;
-
-            int size = u.Def.Swarm ? 40 : (u.Def.TargetsBuildingsOnly || u.Def.Kind == CardKind.Tank || u.Def.Kind == CardKind.Air ? 56 : 52);
-            float bob = u.Def.Flying
-                ? (float)Math.Sin(_animTime * 5f + u.WalkPhase) * 4f
-                : (u.Def.Speed > 0.01f ? (float)Math.Sin(u.WalkPhase) * 1.5f : 0f);
-            var dst = new Rectangle((int)(u.Pos.X - size / 2f), (int)(u.Pos.Y - size / 2f + bob - 2), size, size);
-            DrawRect(new Rectangle(dst.X + 6, dst.Bottom - 5, dst.Width - 12, 4), new Color(0, 0, 0, 45));
-
-            Color tint = Color.Lerp(Color.White, team, 0.10f);
-            if (u.HitFlash > 0) tint = Color.Lerp(tint, Color.White, 0.75f);
-            var fx = u.Facing.X < -0.35f ? SpriteEffects.FlipHorizontally : SpriteEffects.None;
-            var src = new Rectangle(0, 0, tex.Width, tex.Height);
-            _spriteBatch.Draw(tex, dst, src, tint, 0f, Vector2.Zero, fx, 0f);
-            if (u.AttackAnim > 0) DrawRect(dst, new Color(255, 255, 255, 45));
-            return true;
-        }
-
         private bool DrawUnitSprite(Unit u, Color team)
         {
             Texture2D tex = GetCardTexture(u.Def);
@@ -2556,7 +2536,6 @@ namespace LumiaRoyale.Game
             string sp = u.Def.Sprite ?? "";
             if (sp.StartsWith("Puny/")) return DrawPunyUnit(u, team);
             if (sp == "Colosso.png") return DrawColossoSprite(u, team);
-            if (sp.StartsWith("Tiny/") || sp == "arqueira_back.png") return DrawTinySprite(u, tex, team);
             return false; // construções são desenhadas por DrawBuildingUnit
         }
 
@@ -2578,6 +2557,11 @@ namespace LumiaRoyale.Game
                 frame = Math.Min(2, (int)(p * 3f));
                 row = attackRow;
             }
+            else if (u.HitFlash > 0f)
+            {
+                frame = 1;
+                row = 6; // dano
+            }
             else if (u.Def.Speed > 0.01f)
             {
                 frame = Math.Abs((int)(u.WalkPhase / 1.5f)) % 3;
@@ -2591,12 +2575,15 @@ namespace LumiaRoyale.Game
 
             // Mesmo grupo de direção para idle, walk e ataque -> nunca olha pra um lado e bate pro outro.
             var src = new Rectangle((dirGroup * 3 + frame) * PunyCell, row * PunyCell, PunyCell, PunyCell);
-            float bob = row == 1 ? (float)Math.Sin(u.WalkPhase) * 1.2f : 0f;
+            float bob = (row == 1 ? (float)Math.Sin(u.WalkPhase) * 1.2f : 0f)
+                      + (u.Def.Flying ? (float)Math.Sin(_animTime * 5f + u.WalkPhase) * 3f : 0f);
             var dst = new Rectangle((int)(u.Pos.X - size / 2f), (int)(u.Pos.Y - size / 2f + bob - 2), size, size);
             DrawRect(new Rectangle(dst.X + 6, dst.Bottom - 5, dst.Width - 12, 4), new Color(0, 0, 0, 45));
 
-            Color tint = Color.Lerp(Color.White, team, 0.08f);
-            if (u.HitFlash > 0) tint = Color.Lerp(tint, Color.White, 0.75f);
+            // Tinta por carta + time: sheets repetidos continuam com identidade própria.
+            Color tint = Color.Lerp(Color.White, u.Def.Color, 0.16f);
+            tint = Color.Lerp(tint, team, 0.12f);
+            if (u.HitFlash > 0f) tint = Color.Lerp(tint, Color.White, 0.35f);
             _spriteBatch.Draw(tex, dst, src, tint);
         }
 
@@ -2831,8 +2818,8 @@ namespace LumiaRoyale.Game
                 Texture2D portraitTex = GetCardPortraitTexture(def);
                 if (portraitTex != null)
                 {
-                    // Sheets Puny usam o frame idle de frente; os demais sprites
-                    // (Colosso, Torreta, Tiny) têm uma única pose.
+                    // Sheets Puny usam o frame idle de frente; sprites isolados
+                    // (Colosso, Torreta) têm uma única pose.
                     var src = GetCardPortraitSource(def);
                     _spriteBatch.Draw(portraitTex, prev, src, canAfford ? Color.White : new Color(150, 150, 150));
                 }

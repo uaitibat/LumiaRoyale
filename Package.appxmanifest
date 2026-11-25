@@ -3,7 +3,7 @@
          xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest"
          xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
          IgnorableNamespaces="uap mp">
-  <Identity Name="LumiaRoyale" Publisher="CN=uaiti" Version="1.0.2.0" />
+  <Identity Name="LumiaRoyale" Publisher="CN=uaiti" Version="1.0.3.0" />
   <mp:PhoneIdentity PhoneProductId="b7e2a1d4-6c3f-4b8a-9d5e-1f2a3b4c5d6e" PhonePublisherId="00000000-0000-0000-0000-000000000000" />
   <Properties>
     <DisplayName>LumiaRoyale</DisplayName>

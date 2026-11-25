@@ -34,7 +34,7 @@ namespace LumiaRoyale.Game
         private const float ArenaBridgeHalfNorm = 0.068f;
 
         // Versão exibida na home para confirmar qual APPX está instalado.
-        private const string BuildTag = "V 1.0.2";
+        private const string BuildTag = "V 1.0.3";
 
         private float RiverHalf
         {

@@ -24,6 +24,9 @@ namespace LumiaRoyale.Game
         private Texture2D _punyMageRedTex;
         private Texture2D _colossoTex;
         private Texture2D _torretaTex;
+        private Texture2D _arenaTex;
+
+        private float _animTime;
 
         // SE98 / Void theme palette (from ~/.themes/se98-wm-theme-main)
         private static readonly Color Se98Face = new Color(212, 208, 200);      // #D4D0C8
@@ -173,6 +176,7 @@ namespace LumiaRoyale.Game
             int arenaTop = Math.Max(80, h / 14);
             int arenaBottom = h - Math.Max(140, h / 8);
             _arenaRect = new Rectangle(margin, arenaTop, w - margin * 2, arenaBottom - arenaTop);
+            BuildArenaTexture();
 
             float leftLaneX = _arenaRect.Left + _arenaRect.Width * 0.25f;
             float rightLaneX = _arenaRect.Left + _arenaRect.Width * 0.75f;
@@ -240,6 +244,7 @@ namespace LumiaRoyale.Game
 
         private void UpdateFx(float dt)
         {
+            _animTime += dt;
             for (int i = _fx.Count - 1; i >= 0; i--)
             {
                 var f = _fx[i];
@@ -344,17 +349,13 @@ namespace LumiaRoyale.Game
 
                 if (_matchState == "paused")
                 {
-                    int w = GraphicsDevice.Viewport.Width;
-                    int h = GraphicsDevice.Viewport.Height;
-                    var resume = new Rectangle(w / 2 - 110, h / 2 - 17, 220, 38);
-                    var restart = new Rectangle(w / 2 - 110, h / 2 + 31, 220, 38);
-                    if (resume.Contains((int)p.X, (int)p.Y)) { _matchState = "playing"; _status = "Retomado"; _statusTimer = 1f; }
-                    else if (restart.Contains((int)p.X, (int)p.Y)) { ResetMatch(); }
+                    if (GetPauseResumeRect().Contains((int)p.X, (int)p.Y)) { _matchState = "playing"; _status = "Retomado"; _statusTimer = 1f; }
+                    else if (GetPauseRestartRect().Contains((int)p.X, (int)p.Y)) { ResetMatch(); }
                     return;
                 }
 
                 // pause button top-right HUD
-                var pauseBtn = new Rectangle(GraphicsDevice.Viewport.Width - 42, 44, 32, 32);
+                var pauseBtn = GetPauseButtonRect();
                 if (pauseBtn.Contains((int)p.X, (int)p.Y))
                 {
                     _matchState = "paused";
@@ -401,6 +402,30 @@ namespace LumiaRoyale.Game
             for (int i = 0; i < 4; i++)
                 rects[i] = new Rectangle(side + i * (cardW + gap), y, cardW, cardH);
             return rects;
+        }
+
+        // Retângulos centralizados: input e desenho usam exatamente os mesmos limites.
+        private Rectangle GetPauseButtonRect()
+        {
+            return new Rectangle(GraphicsDevice.Viewport.Width - 42, 56, 32, 30);
+        }
+
+        private Rectangle GetPauseBoxRect()
+        {
+            return new Rectangle(GraphicsDevice.Viewport.Width / 2 - 150,
+                                 GraphicsDevice.Viewport.Height / 2 - 95, 300, 190);
+        }
+
+        private Rectangle GetPauseResumeRect()
+        {
+            var box = GetPauseBoxRect();
+            return new Rectangle(box.X + 40, box.Y + 60, 220, 38);
+        }
+
+        private Rectangle GetPauseRestartRect()
+        {
+            var box = GetPauseBoxRect();
+            return new Rectangle(box.X + 40, box.Y + 108, 220, 38);
         }
 
         private void DrawCard(int handIndex)
@@ -1162,17 +1187,66 @@ namespace LumiaRoyale.Game
             base.Draw(gameTime);
         }
 
+        private static int ClampByte(int v)
+        {
+            return v < 0 ? 0 : (v > 255 ? 255 : v);
+        }
+
+        private void BuildArenaTexture()
+        {
+            int w = Math.Max(1, _arenaRect.Width);
+            int h = Math.Max(1, _arenaRect.Height);
+            if (_arenaTex != null && _arenaTex.Width == w && _arenaTex.Height == h) return;
+            if (_arenaTex != null) _arenaTex.Dispose();
+
+            float leftLane = w * 0.25f;
+            float rightLane = w * 0.75f;
+            var data = new Color[w * h];
+            for (int y = 0; y < h; y++)
+            {
+                for (int x = 0; x < w; x++)
+                {
+                    bool light = ((x / 16) + (y / 16)) % 2 == 0;
+                    int jitter = ((x * 37 + y * 17 + ((x * y) >> 3)) & 7) - 3;
+                    int r = (light ? 46 : 41) + jitter / 2;
+                    int g = (light ? 116 : 106) + jitter;
+                    int b = (light ? 64 : 58) + jitter / 2;
+
+                    float laneDist = Math.Min(Math.Abs(x - leftLane), Math.Abs(x - rightLane));
+                    if (laneDist < 54f) { r += 4; g += 9; b += 3; }
+                    if (x < 6 || y < 6 || x >= w - 6 || y >= h - 6) { r += 12; g += 10; b += 6; }
+
+                    data[y * w + x] = new Color(ClampByte(r), ClampByte(g), ClampByte(b));
+                }
+            }
+
+            var tex = new Texture2D(GraphicsDevice, w, h);
+            tex.SetData(data);
+            _arenaTex = tex;
+        }
+
         private void DrawArena()
         {
-            DrawRect(_arenaRect, new Color(46, 112, 62));
-            // subtle lane shading
-            DrawRect(new Rectangle(_arenaRect.Left, _arenaRect.Top, _arenaRect.Width, _arenaRect.Height / 2), new Color(0, 0, 0, 18));
+            if (_arenaTex != null)
+                _spriteBatch.Draw(_arenaTex, _arenaRect, Color.White);
+            else
+                DrawRect(_arenaRect, new Color(46, 112, 62));
+
             DrawRect(new Rectangle(_arenaRect.Left + 8, _arenaRect.Top + 8, _arenaRect.Width - 16, _arenaRect.Height - 16), new Color(76, 146, 88), 2);
 
             var river = new Rectangle(_arenaRect.Left, _arenaRect.Center.Y - 14, _arenaRect.Width, 28);
-            DrawRect(river, new Color(58, 132, 206));
-            DrawRect(new Rectangle(river.X, river.Y + 4, river.Width, 3), new Color(120, 190, 240, 120));
-            DrawRect(new Rectangle(river.X, river.Bottom - 8, river.Width, 3), new Color(120, 190, 240, 90));
+            DrawRect(river, new Color(52, 120, 190));
+            DrawRect(new Rectangle(river.X, river.Y + 3, river.Width, 3), new Color(120, 190, 240, 110));
+            DrawRect(new Rectangle(river.X, river.Bottom - 8, river.Width, 3), new Color(120, 190, 240, 80));
+
+            // ondas animadas, baratas (uma linha a cada 24 px)
+            int drift = (int)(_animTime * 14f) % 24;
+            for (int x = river.X - 24 + drift; x < river.Right; x += 24)
+            {
+                int oy = (int)(Math.Sin(x * 0.05f + _animTime * 2f) * 2f);
+                DrawRect(new Rectangle(x, river.Y + 9 + oy, 12, 2), new Color(210, 238, 255, 110));
+                DrawRect(new Rectangle(x + 6, river.Y + 18 - oy, 10, 2), new Color(200, 232, 255, 70));
+            }
 
             DrawBridge(_arenaRect.Left + _arenaRect.Width / 4);
             DrawBridge(_arenaRect.Left + 3 * _arenaRect.Width / 4);
@@ -1186,8 +1260,16 @@ namespace LumiaRoyale.Game
             var r = new Rectangle(centerX - 24, _arenaRect.Center.Y - 20, 48, 40);
             DrawRect(r, new Color(132, 102, 74));
             DrawRect(r, new Color(88, 64, 44), 2);
-            DrawRect(new Rectangle(r.X + 6, r.Y + 6, r.Width - 12, 4), new Color(170, 138, 100));
-            DrawRect(new Rectangle(r.X + 6, r.Bottom - 10, r.Width - 12, 4), new Color(170, 138, 100));
+
+            // tábuas
+            for (int y = r.Y + 4; y < r.Bottom - 3; y += 6)
+                DrawRect(new Rectangle(r.X + 3, y, r.Width - 6, 2), new Color(96, 70, 48, 170));
+
+            // trilhos laterais
+            DrawRect(new Rectangle(r.X + 2, r.Y + 3, 4, r.Height - 6), new Color(170, 138, 100));
+            DrawRect(new Rectangle(r.Right - 6, r.Y + 3, 4, r.Height - 6), new Color(170, 138, 100));
+            DrawRect(new Rectangle(r.X + 6, r.Y + 6, r.Width - 12, 3), new Color(190, 158, 120));
+            DrawRect(new Rectangle(r.X + 6, r.Bottom - 9, r.Width - 12, 3), new Color(190, 158, 120));
         }
 
         private void DrawDeployHint()
@@ -1258,6 +1340,14 @@ namespace LumiaRoyale.Game
                 Color teamDark = t.IsEnemy ? new Color(120, 36, 36) : new Color(36, 78, 132);
                 int size = t.IsMain ? 76 : 60;
                 var body = new Rectangle((int)t.Pos.X - size / 2, (int)t.Pos.Y - size / 2, size, size);
+
+                // plataforma de pedra sob a torre
+                int padW = t.IsMain ? 92 : 74;
+                var pad = new Rectangle((int)t.Pos.X - padW / 2, body.Bottom - 10, padW, 14);
+                DrawRect(pad, new Color(30, 58, 36, 150));
+                DrawRect(new Rectangle(pad.X + 5, pad.Y + 2, pad.Width - 10, 8), new Color(118, 122, 112, 200));
+                DrawRect(new Rectangle(pad.X + 5, pad.Y + 2, pad.Width - 10, 2), new Color(170, 174, 164, 190));
+
                 DrawRect(new Rectangle(body.X + 8, body.Bottom - 4, body.Width, 8), new Color(0, 0, 0, 45));
 
                 if (_torretaTex != null)
@@ -1680,7 +1770,7 @@ namespace LumiaRoyale.Game
 
             if (_matchState == "playing")
             {
-                var pause = new Rectangle(w - 42, 56, 32, 30);
+                var pause = GetPauseButtonRect();
                 DrawBeveledPanel(pause, true);
                 DrawRect(new Rectangle(pause.X + 9, pause.Y + 8, 4, 14), Se98Text);
                 DrawRect(new Rectangle(pause.X + 19, pause.Y + 8, 4, 14), Se98Text);
@@ -1931,16 +2021,14 @@ namespace LumiaRoyale.Game
 
             if (_matchState == "paused")
             {
-                var box = new Rectangle(vw / 2 - 150, vh / 2 - 95, 300, 190);
+                var box = GetPauseBoxRect();
                 DrawBeveledPanel(box, false);
                 for (int x = box.X + 2; x < box.Right - 2; x += 2)
                     DrawRect(new Rectangle(x, box.Y + 2, 2, 26), Color.Lerp(Se98TitleA, Se98TitleB, (x - box.X) / (float)box.Width));
                 DrawPixelText("PAUSADO", box.X + 96, box.Y + 8, 4, Color.White);
 
-                var resume = new Rectangle(box.X + 40, box.Y + 60, 220, 38);
-                var restart = new Rectangle(box.X + 40, box.Y + 108, 220, 38);
-                DrawBeveledButton(resume, "RETOMAR");
-                DrawBeveledButton(restart, "REINICIAR");
+                DrawBeveledButton(GetPauseResumeRect(), "RETOMAR");
+                DrawBeveledButton(GetPauseRestartRect(), "REINICIAR");
                 return;
             }
 

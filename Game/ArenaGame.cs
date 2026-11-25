@@ -34,7 +34,7 @@ namespace LumiaRoyale.Game
         private const float ArenaBridgeHalfNorm = 0.068f;
 
         // Versão exibida na home para confirmar qual APPX está instalado.
-        private const string BuildTag = "V 1.0.1";
+        private const string BuildTag = "V 1.0.2";
 
         private float RiverHalf
         {
@@ -909,10 +909,21 @@ namespace LumiaRoyale.Game
 
         private Rectangle GetHomeArenaRect()
         {
-            // Arena independente do banner/nome: sempre no centro da tela.
-            int size = HX(276);
-            return new Rectangle(GraphicsDevice.Viewport.Width / 2 - size / 2,
-                                 GraphicsDevice.Viewport.Height / 2 - size / 2, size, size);
+            // Mais alta que larga: cresce em Y até pouco acima dos baus, que por
+            // sua vez ficam acima dos botoes CARTAS/BATALHA.
+            int w = HX(276);
+            var nav = GetNavRect();
+            int buttonH = HY(48);
+            int chestH = HY(84);
+            int bottom = nav.Y - HY(16) - chestH - HY(10) - buttonH - HY(4);
+
+            var nick = GetHomeNickRect();
+            int top = nick.Bottom + HY(4) + HY(28) + HY(9); // titulo + espaco
+
+            // Em telas muito curtas, mantem uma altura minima utilizavel.
+            if (bottom - top < HX(200)) bottom = top + HX(200);
+
+            return new Rectangle(GraphicsDevice.Viewport.Width / 2 - w / 2, top, w, bottom - top);
         }
 
         private Rectangle GetHomeArenaTitleRect()
@@ -2084,14 +2095,14 @@ namespace LumiaRoyale.Game
             _arenaTex = tex;
         }
 
-        private void DrawArena(bool withBackground = true)
+        private void DrawArena(bool withBackground = true, Rectangle? bgAspect = null)
         {
             if (_arenaBgTex != null)
             {
                 // No combate o cenário já foi desenhado em tela cheia.
                 if (!withBackground) return;
 
-                DrawArenaBackground();
+                DrawArenaBackground(bgAspect ?? _arenaRect);
 
                 // Moldura discreta para o cenário não encostar no HUD.
                 DrawRect(new Rectangle(_arenaRect.Left, _arenaRect.Top, _arenaRect.Width, 2), new Color(6, 10, 16, 170));
@@ -2131,12 +2142,15 @@ namespace LumiaRoyale.Game
 
         // Recorte "cover" do cenário: preserva a proporção da arte e centraliza
         // o rio na linha média da arena (as pontes já caem em 25% e 75%).
-        private void DrawArenaBackground()
+        private void DrawArenaBackground(Rectangle aspectRect)
         {
             var tex = _arenaBgTex;
             if (tex == null || _arenaRect.Width <= 0 || _arenaRect.Height <= 0) return;
+            if (aspectRect.Width <= 0 || aspectRect.Height <= 0) return;
 
-            float destAspect = _arenaRect.Width / (float)_arenaRect.Height;
+            // Na home o recorte usa a proporcao da mini arena (ja escalada pelo
+            // transform), nao a da arena de combate, para nao distorcer a arte.
+            float destAspect = aspectRect.Width / (float)aspectRect.Height;
             float texAspect = tex.Width / (float)tex.Height;
             Rectangle src;
             if (texAspect > destAspect)
@@ -3233,7 +3247,7 @@ namespace LumiaRoyale.Game
 
                 _spriteBatch.End();
                 _spriteBatch.Begin(samplerState: SamplerState.LinearClamp, transformMatrix: m);
-                DrawArena();
+                DrawArena(true, r);
                 DrawTowers();
                 DrawUnits();
                 DrawProjectiles();

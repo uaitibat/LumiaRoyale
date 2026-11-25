@@ -50,7 +50,7 @@ namespace LumiaRoyale.Game
         private const int PunyCell = 32;
         private const int PunyFrontDir = 4; // S (de frente para a câmera)
         private const int BannerW = 280;
-        private const int BannerH = 40;
+        private const int BannerH = 60;
 
         private readonly List<Unit> _units = new List<Unit>();
         private readonly List<Tower> _towers = new List<Tower>();
@@ -254,17 +254,22 @@ namespace LumiaRoyale.Game
         {
             var src = LoadTex(relativePath);
             if (src == null) return null;
-            int w = src.Width;
-            int fullH = src.Height;
-            var all = new Color[w * fullH];
+            int srcW = src.Width;
+            int srcH = src.Height;
+            var all = new Color[srcW * srcH];
             src.GetData(all);
-            // Recorta o centro da foto para a proporção do banner, sem esticar a imagem.
-            int h = Math.Min(fullH, (int)(w * (float)BannerH / BannerW));
-            int top = (fullH - h) / 2;
+            // Recorte central nos dois eixos para a proporção do banner, sem esticar.
+            float aspect = (float)BannerW / BannerH;
+            int w = srcW;
+            int h = srcH;
+            if ((float)srcW / srcH > aspect) w = (int)(srcH * aspect);
+            else h = (int)(srcW / aspect);
+            int left = (srcW - w) / 2;
+            int top = (srcH - h) / 2;
             var raw = new Color[w * h];
             for (int y = 0; y < h; y++)
                 for (int x = 0; x < w; x++)
-                    raw[y * w + x] = all[(y + top) * w + x];
+                    raw[y * w + x] = all[(y + top) * srcW + (x + left)];
             var data = new Color[w * h];
             for (int y = 0; y < h; y++)
                 for (int x = 0; x < w; x++)

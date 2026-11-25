@@ -1993,8 +1993,16 @@ namespace LumiaRoyale.Game
 
             if (inMatch)
             {
+                // Cenário cobre a tela inteira, atrás do HUD, cartas, torres e unidades.
+                if (_arenaBgTex != null)
+                {
+                    _spriteBatch.Begin(samplerState: SamplerState.LinearClamp);
+                    DrawFullScreenArenaBackground();
+                    _spriteBatch.End();
+                }
+
                 _spriteBatch.Begin(transformMatrix: Matrix.CreateTranslation(new Vector3(_shakeOffset.X, _shakeOffset.Y, 0f)));
-                DrawArena();
+                DrawArena(false);
                 DrawLaneHints();
                 DrawDeployHint();
                 DrawTowers();
@@ -2065,10 +2073,13 @@ namespace LumiaRoyale.Game
             _arenaTex = tex;
         }
 
-        private void DrawArena()
+        private void DrawArena(bool withBackground = true)
         {
             if (_arenaBgTex != null)
             {
+                // No combate o cenário já foi desenhado em tela cheia.
+                if (!withBackground) return;
+
                 DrawArenaBackground();
 
                 // Moldura discreta para o cenário não encostar no HUD.
@@ -2133,6 +2144,40 @@ namespace LumiaRoyale.Game
             }
 
             _spriteBatch.Draw(tex, _arenaRect, src, Color.White);
+        }
+
+        // Fundo de tela cheia: cobre o viewport e alinha o rio da arte com o
+        // centro da arena (onde a lógica restringe a travessia).
+        private void DrawFullScreenArenaBackground()
+        {
+            var tex = _arenaBgTex;
+            if (tex == null) return;
+
+            int vw = GraphicsDevice.Viewport.Width;
+            int vh = GraphicsDevice.Viewport.Height;
+            const float riverNorm = 0.4927f;
+            float cy = _arenaRect.Center.Y;
+
+            float scale = Math.Max(vw / (float)tex.Width, vh / (float)tex.Height);
+            scale = Math.Max(scale, cy / (riverNorm * tex.Height));
+            scale = Math.Max(scale, (vh - cy) / ((1f - riverNorm) * tex.Height));
+
+            int dw = (int)Math.Ceiling(tex.Width * scale);
+            int dh = (int)Math.Ceiling(tex.Height * scale);
+            int dx = (vw - dw) / 2;
+            int dy = (int)(cy - riverNorm * tex.Height * scale);
+
+            _spriteBatch.Draw(tex, new Rectangle(dx, dy, dw, dh), Color.White);
+
+            // Escurece levemente o que fica fora da área jogável, sem esconder o cenário.
+            int topH = Math.Max(0, _arenaRect.Top);
+            int botY = Math.Min(vh, _arenaRect.Bottom);
+            if (topH > 0) DrawRect(new Rectangle(0, 0, vw, topH), new Color(4, 8, 14, 70));
+            if (botY < vh) DrawRect(new Rectangle(0, botY, vw, vh - botY), new Color(4, 8, 14, 90));
+            int leftW = Math.Max(0, _arenaRect.Left);
+            int rightX = Math.Min(vw, _arenaRect.Right);
+            if (leftW > 0) DrawRect(new Rectangle(0, _arenaRect.Top, leftW, _arenaRect.Height), new Color(4, 8, 14, 45));
+            if (rightX < vw) DrawRect(new Rectangle(rightX, _arenaRect.Top, vw - rightX, _arenaRect.Height), new Color(4, 8, 14, 45));
         }
 
         private void DrawBridge(int centerX)

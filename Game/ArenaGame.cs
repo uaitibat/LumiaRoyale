@@ -253,9 +253,16 @@ namespace LumiaRoyale.Game
             var src = LoadTex(relativePath);
             if (src == null) return null;
             int w = src.Width;
-            int h = src.Height;
+            int fullH = src.Height;
+            var all = new Color[w * fullH];
+            src.GetData(all);
+            // Recorta o centro da foto para o proporção 300x104, sem esticar a imagem.
+            int h = Math.Min(fullH, (int)(w * 104f / 300f));
+            int top = (fullH - h) / 2;
             var raw = new Color[w * h];
-            src.GetData(raw);
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                    raw[y * w + x] = all[(y + top) * w + x];
             var data = new Color[w * h];
             for (int y = 0; y < h; y++)
                 for (int x = 0; x < w; x++)
@@ -736,7 +743,7 @@ namespace LumiaRoyale.Game
         {
             // Bandeira retangular na esquerda (X maior que Y).
             int w = HX(300);
-            int h = HY(150);
+            int h = HY(104);
             return new Rectangle(HX(14), HY(94), w, h);
         }
 

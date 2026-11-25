@@ -1144,7 +1144,7 @@ namespace LumiaRoyale.Game
         {
             GraphicsDevice.Clear(new Color(26, 72, 44));
 
-            _spriteBatch.Begin(transformMatrix: Matrix.CreateTranslation(_shakeOffset.X, _shakeOffset.Y));
+            _spriteBatch.Begin(transformMatrix: Matrix.CreateTranslation(new Vector3(_shakeOffset.X, _shakeOffset.Y, 0f)));
             DrawArena();
             DrawDeployHint();
             DrawTowers();

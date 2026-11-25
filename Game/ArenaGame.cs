@@ -68,12 +68,17 @@ namespace LumiaRoyale.Game
         private struct Fx
         {
             public Vector2 Pos;
+            public Vector2 Vel;
             public float Life;
             public float MaxLife;
             public float Size;
             public Color Color;
-            public string Kind; // "hit", "death", "spawn"
+            public string Kind; // "hit", "spark", "damage", "death", "spawn"
+            public string Text;
         }
+
+        private float _shake;
+        private Vector2 _shakeOffset;
 
         public ArenaGame()
         {
@@ -210,7 +215,9 @@ namespace LumiaRoyale.Game
             {
                 if (_units[i].Alive) continue;
                 var u = _units[i];
-                AddFx(u.Pos, u.IsEnemy ? new Color(255, 120, 120) : new Color(120, 190, 255), u.IsBuilding ? 24f : 18f, 0.35f, "death");
+                Color deathColor = u.IsEnemy ? new Color(255, 120, 120) : new Color(120, 190, 255);
+                AddBurst(u.Pos, deathColor, u.IsBuilding ? 10 : 8, 55f);
+                AddFx(u.Pos, deathColor, u.IsBuilding ? 26f : 20f, 0.35f, "death");
                 _units.RemoveAt(i);
             }
             CheckEnd();
@@ -237,7 +244,9 @@ namespace LumiaRoyale.Game
             {
                 var f = _fx[i];
                 f.Life -= dt;
-                f.Size += dt * (f.Kind == "hit" ? 18f : 34f);
+                f.Pos += f.Vel * dt;
+                f.Vel *= Math.Max(0f, 1f - dt * 2.2f);
+                f.Size += dt * (f.Kind == "damage" || f.Kind == "spark" ? 0f : (f.Kind == "hit" ? 18f : 34f));
                 _fx[i] = f;
                 if (f.Life <= 0) _fx.RemoveAt(i);
             }
@@ -247,11 +256,62 @@ namespace LumiaRoyale.Game
                 if (u.AttackAnim > 0) u.AttackAnim -= dt;
             }
             foreach (var t in _towers) if (t.HitFlash > 0) t.HitFlash -= dt;
+
+            _shake = Math.Max(0f, _shake - dt * 2.6f);
+            float amp = _shake * 5f;
+            _shakeOffset = amp <= 0.01f
+                ? Vector2.Zero
+                : new Vector2((float)(_rng.NextDouble() * 2.0 - 1.0) * amp,
+                              (float)(_rng.NextDouble() * 2.0 - 1.0) * amp);
         }
 
         private void AddFx(Vector2 pos, Color c, float size, float life, string kind)
         {
-            _fx.Add(new Fx { Pos = pos, Color = c, Size = size, Life = life, MaxLife = life, Kind = kind });
+            AddFx(pos, c, size, life, kind, Vector2.Zero, null);
+        }
+
+        private void AddFx(Vector2 pos, Color c, float size, float life, string kind, Vector2 vel, string text)
+        {
+            if (_fx.Count > 240) _fx.RemoveAt(0); // teto pra não pesar no Lumia
+            _fx.Add(new Fx
+            {
+                Pos = pos,
+                Vel = vel,
+                Life = life,
+                MaxLife = life,
+                Size = size,
+                Color = c,
+                Kind = kind,
+                Text = text
+            });
+        }
+
+        private void AddDamageNumber(Vector2 pos, int dmg, Color color)
+        {
+            if (dmg <= 0) return;
+            float dx = (float)(_rng.NextDouble() * 2.0 - 1.0) * 9f;
+            AddFx(pos + new Vector2(0f, -18f), Color.Lerp(Color.White, color, 0.45f),
+                  0f, 0.55f, "damage", new Vector2(dx, -30f), dmg.ToString());
+        }
+
+        private void AddBurst(Vector2 pos, Color color, int count, float speed)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                float ang = MathHelper.TwoPi * i / count + (float)_rng.NextDouble() * 0.5f;
+                float v = speed * (0.6f + (float)_rng.NextDouble() * 0.7f);
+                AddFx(pos, color, 5f + (i % 2) * 2f, 0.28f, "spark",
+                      new Vector2((float)Math.Cos(ang) * v, (float)Math.Sin(ang) * v), null);
+            }
+        }
+
+        private void DamageUnit(Unit u, int dmg, Color attackerColor)
+        {
+            if (u == null || !u.Alive || dmg <= 0) return;
+            u.Hp -= dmg;
+            u.HitFlash = 0.16f;
+            AddDamageNumber(u.Pos, dmg, attackerColor);
+            AddFx(u.Pos, Color.White, 9f, 0.12f, "hit");
         }
 
         private void CheckEnd()
@@ -404,7 +464,7 @@ namespace LumiaRoyale.Game
             foreach (var u in _units)
             {
                 if (!u.Alive || u.IsEnemy == enemy) continue;
-                if (Vector2.Distance(u.Pos, pos) <= card.AreaRadius + u.Radius) { u.Hp -= card.Damage; u.HitFlash = 0.15f; }
+                if (Vector2.Distance(u.Pos, pos) <= card.AreaRadius + u.Radius) DamageUnit(u, card.Damage, card.Color);
             }
             foreach (var t in _towers)
             {
@@ -412,9 +472,7 @@ namespace LumiaRoyale.Game
                 float tr = t.IsMain ? 34f : 28f;
                 if (Vector2.Distance(t.Pos, pos) <= card.AreaRadius + tr)
                 {
-                    t.Hp -= card.Damage;
-                    t.HitFlash = 0.15f;
-                    if (t.IsMain) t.Awake = true;
+                    DamageTower(t, card.Damage, !enemy);
                 }
             }
         }
@@ -741,7 +799,7 @@ namespace LumiaRoyale.Game
                 foreach (var u in _units)
                 {
                     if (!u.Alive || u.IsEnemy == !p.ByPlayer) continue;
-                    if (Vector2.Distance(u.Pos, hitPos) <= p.AreaRadius + u.Radius) { u.Hp -= p.Damage; u.HitFlash = 0.12f; }
+                    if (Vector2.Distance(u.Pos, hitPos) <= p.AreaRadius + u.Radius) DamageUnit(u, p.Damage, p.Color);
                 }
                 foreach (var t in _towers)
                 {
@@ -754,7 +812,7 @@ namespace LumiaRoyale.Game
             {
                 if (p.UnitTarget != null && p.UnitTarget.Alive && p.UnitTarget.IsEnemy == !p.ByPlayer && Vector2.Distance(p.UnitTarget.Pos, hitPos) < 80f)
                 {
-                    p.UnitTarget.Hp -= p.Damage; p.UnitTarget.HitFlash = 0.12f;
+                    DamageUnit(p.UnitTarget, p.Damage, p.Color);
                 }
                 else if (p.TowerTarget != null && p.TowerTarget.Alive && p.TowerTarget.IsEnemy == !p.ByPlayer && Vector2.Distance(p.TowerTarget.Pos, hitPos) < 80f)
                 {
@@ -767,7 +825,7 @@ namespace LumiaRoyale.Game
                     {
                         if (!u.Alive || u.IsEnemy == !p.ByPlayer) continue;
                         if (Vector2.DistanceSquared(p.Pos, u.Pos) <= (u.Radius + p.Radius + 2f) * (u.Radius + p.Radius + 2f))
-                        { u.Hp -= p.Damage; u.HitFlash = 0.12f; break; }
+                        { DamageUnit(u, p.Damage, p.Color); break; }
                     }
                 }
                 AddFx(hitPos, p.Color, 8f, 0.14f, "hit");
@@ -899,7 +957,7 @@ namespace LumiaRoyale.Game
                     {
                         bestScore = score;
                         var o = other;
-                        best = new TargetInfo { pos = o.Pos, radius = o.Radius, isTower = false, isMain = false, isEnemy = o.IsEnemy, unit = o, tower = null, applyDamage = dmg => { o.Hp -= dmg; o.HitFlash = 0.12f; } };
+                        best = new TargetInfo { pos = o.Pos, radius = o.Radius, isTower = false, isMain = false, isEnemy = o.IsEnemy, unit = o, tower = null, applyDamage = dmg => DamageUnit(o, dmg, u.Def.Color) };
                     }
                 }
 
@@ -922,7 +980,7 @@ namespace LumiaRoyale.Game
                 {
                     bestStructureScore = score;
                     var o = other;
-                    bestStructure = new TargetInfo { pos = o.Pos, radius = o.Radius, isTower = false, isMain = false, isEnemy = o.IsEnemy, unit = o, tower = null, applyDamage = dmg => { o.Hp -= dmg; o.HitFlash = 0.12f; } };
+                    bestStructure = new TargetInfo { pos = o.Pos, radius = o.Radius, isTower = false, isMain = false, isEnemy = o.IsEnemy, unit = o, tower = null, applyDamage = dmg => DamageUnit(o, dmg, u.Def.Color) };
                 }
             }
 
@@ -1042,8 +1100,7 @@ namespace LumiaRoyale.Game
                 }
                 if (target != null)
                 {
-                    target.Hp -= t.Damage;
-                    target.HitFlash = 0.12f;
+                    DamageUnit(target, t.Damage, new Color(255, 220, 120));
                     AddFx(Vector2.Lerp(t.Pos, target.Pos, 0.7f), new Color(255, 240, 160), 7f, 0.12f, "hit");
                     t.CooldownLeft = t.Cooldown;
                 }
@@ -1052,12 +1109,29 @@ namespace LumiaRoyale.Game
 
         private void DamageTower(Tower t, int dmg, bool byPlayer)
         {
-            if (!t.Alive) return;
-            bool wasAlive = t.Alive;
+            if (!t.Alive || dmg <= 0) return;
+            bool wasAwake = t.Awake;
             t.Hp -= dmg;
-            t.HitFlash = 0.12f;
+            t.HitFlash = 0.16f;
+            AddDamageNumber(t.Pos + new Vector2(0f, -12f), dmg,
+                byPlayer ? new Color(150, 220, 255) : new Color(255, 150, 140));
+            AddFx(t.Pos, Color.White, 12f, 0.14f, "hit");
             if (t.IsMain) t.Awake = true;
-            if (wasAlive && !t.Alive && !t.IsMain)
+
+            if (!t.Alive)
+            {
+                AddBurst(t.Pos, t.IsEnemy ? new Color(255, 130, 110) : new Color(120, 190, 255), 12, 70f);
+                _shake = Math.Max(_shake, t.IsMain ? 1f : 0.65f);
+            }
+            else if (t.IsMain && !wasAwake)
+            {
+                AddBurst(t.Pos, new Color(255, 225, 140), 10, 55f);
+                _shake = Math.Max(_shake, 0.5f);
+                _status = "REI ACORDOU!";
+                _statusTimer = 2f;
+            }
+
+            if (!t.IsMain && !t.Alive)
             {
                 AwardCrown(t.IsEnemy);
                 // awaken king when a princess tower falls
@@ -1070,7 +1144,7 @@ namespace LumiaRoyale.Game
         {
             GraphicsDevice.Clear(new Color(26, 72, 44));
 
-            _spriteBatch.Begin();
+            _spriteBatch.Begin(transformMatrix: Matrix.CreateTranslation(_shakeOffset.X, _shakeOffset.Y));
             DrawArena();
             DrawDeployHint();
             DrawTowers();
@@ -1532,10 +1606,47 @@ namespace LumiaRoyale.Game
             foreach (var f in _fx)
             {
                 float a = MathHelper.Clamp(f.Life / f.MaxLife, 0f, 1f);
-                int size = (int)f.Size;
-                var r = new Rectangle((int)f.Pos.X - size / 2, (int)f.Pos.Y - size / 2, size, size);
-                DrawRect(r, f.Color * (a * 0.55f));
-                DrawRect(r, Color.White * (a * 0.35f), 1);
+                if (a <= 0f) continue;
+                int cx = (int)f.Pos.X;
+                int cy = (int)f.Pos.Y;
+
+                if (f.Kind == "damage")
+                {
+                    if (string.IsNullOrEmpty(f.Text)) continue;
+                    DrawPixelText(f.Text, cx + 1, cy + 1, 1, Color.Black * (a * 0.75f));
+                    DrawPixelText(f.Text, cx, cy, 1, f.Color * a);
+                    continue;
+                }
+
+                if (f.Kind == "spark" || f.Kind == "death")
+                {
+                    int s = Math.Max(2, (int)f.Size);
+                    DrawRect(new Rectangle(cx - s / 2, cy - s / 2, s, s), f.Color * (a * 0.9f));
+                    continue;
+                }
+
+                int size = Math.Max(4, (int)f.Size);
+                var r = new Rectangle(cx - size / 2, cy - size / 2, size, size);
+
+                if (f.Kind == "hit")
+                {
+                    int arm = size / 2;
+                    int t = Math.Max(2, arm / 3);
+                    DrawRect(new Rectangle(cx - arm, cy - t / 2, arm, t), f.Color * a);
+                    DrawRect(new Rectangle(cx + t / 2, cy - t / 2, arm, t), f.Color * a);
+                    DrawRect(new Rectangle(cx - t / 2, cy - arm, t, arm), f.Color * a);
+                    DrawRect(new Rectangle(cx - t / 2, cy + t / 2, t, arm), f.Color * a);
+                    DrawRect(new Rectangle(cx - 2, cy - 2, 4, 4), Color.White * a);
+                    continue;
+                }
+
+                // spawn / death ring
+                int d = size / 2;
+                int k = Math.Max(3, size / 4);
+                DrawRect(new Rectangle(cx - d, cy - d, k, k), f.Color * (a * 0.75f));
+                DrawRect(new Rectangle(cx + d - k, cy - d, k, k), f.Color * (a * 0.75f));
+                DrawRect(new Rectangle(cx - d, cy + d - k, k, k), f.Color * (a * 0.75f));
+                DrawRect(new Rectangle(cx + d - k, cy + d - k, k, k), f.Color * (a * 0.75f));
             }
         }
 

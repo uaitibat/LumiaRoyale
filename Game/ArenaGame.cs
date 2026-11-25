@@ -258,14 +258,14 @@ namespace LumiaRoyale.Game
             int srcH = src.Height;
             var all = new Color[srcW * srcH];
             src.GetData(all);
-            // Recorte central nos dois eixos para a proporção do banner, sem esticar.
+            // Centro no eixo X e base alinhada com a base do banner no eixo Y.
             float aspect = (float)BannerW / BannerH;
             int w = srcW;
             int h = srcH;
             if ((float)srcW / srcH > aspect) w = (int)(srcH * aspect);
             else h = (int)(srcW / aspect);
             int left = (srcW - w) / 2;
-            int top = (srcH - h) / 2;
+            int top = srcH - h;
             var raw = new Color[w * h];
             for (int y = 0; y < h; y++)
                 for (int x = 0; x < w; x++)

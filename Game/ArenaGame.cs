@@ -40,6 +40,8 @@ namespace LumiaRoyale.Game
         // Única cor da área de deploy: vermelho translúcido.
         private static readonly Color SpawnAreaFill = new Color(255, 70, 70, 38);
         private static readonly Color SpawnAreaBorder = new Color(255, 110, 110, 150);
+        private static readonly Color HomeBackground = new Color(8, 12, 26);
+        private static readonly Color HomeGrid = new Color(40, 60, 100, 45);
 
         // Puny Characters sheet: 32x32 cells, 8 rows = animations, 24 cols = 8 directions * 3 frames.
         private const int PunyCell = 32;
@@ -61,7 +63,7 @@ namespace LumiaRoyale.Game
         private float _enemyMana;
         private float _enemySpawnTimer;
         private string _status = "Toque numa carta e depois na sua metade";
-        private string _matchState = ""; // "menu", "playing", "win", "lose"
+        private string _matchState = ""; // "intro", "home", "playing", "paused", "win", "lose"
 
         private Rectangle _arenaRect;
         private float _statusTimer;
@@ -71,6 +73,9 @@ namespace LumiaRoyale.Game
         private int _playerTowersLost;
         private int _enemyTowersLost;
         private int _towerLevel = TowerBalance.BaseLevel;
+        private float _introTime;
+        private int _difficulty; // 0 = Novato, 1 = Veterano, 2 = Mestre
+        private bool _homeHelp;
 
         private struct Fx
         {
@@ -113,8 +118,9 @@ namespace LumiaRoyale.Game
             TouchPanel.EnabledGestures = GestureType.Tap;
             base.Initialize();
             ResetMatch();
-            _matchState = "menu";
-            _status = "Toque para jogar";
+            _matchState = "intro";
+            _introTime = 0f;
+            _status = "";
         }
 
         protected override void LoadContent()
@@ -208,6 +214,14 @@ namespace LumiaRoyale.Game
             UpdateFx(dt);
             if (_statusTimer > 0) _statusTimer -= dt;
 
+            if (_matchState == "intro")
+            {
+                _introTime += dt;
+                if (_introTime >= 2.6f) { _matchState = "home"; _introTime = 0f; }
+                base.Update(gameTime);
+                return;
+            }
+
             if (_matchState != "playing") { base.Update(gameTime); return; }
 
             _timeLeft -= dt;
@@ -215,7 +229,8 @@ namespace LumiaRoyale.Game
 
             float manaRate = _timeLeft <= 60f ? 0.85f : 0.55f;
             _mana = Math.Min(ManaMax, _mana + dt * manaRate);
-            _enemyMana = Math.Min(ManaMax, _enemyMana + dt * manaRate);
+            float enemyRate = manaRate * (_difficulty == 0 ? 0.85f : (_difficulty == 2 ? 1.15f : 1f));
+            _enemyMana = Math.Min(ManaMax, _enemyMana + dt * enemyRate);
 
             UpdateEnemy(dt);
             UpdateUnits(dt);
@@ -357,9 +372,41 @@ namespace LumiaRoyale.Game
                 if (g.GestureType != GestureType.Tap) continue;
                 var p = g.Position;
 
-                if (_matchState == "menu" || _matchState == "win" || _matchState == "lose")
+                if (_matchState == "intro")
                 {
-                    ResetMatch();
+                    _matchState = "home";
+                    _introTime = 0f;
+                    return;
+                }
+
+                if (_matchState == "home")
+                {
+                    if (GetHomePlayRect().Contains((int)p.X, (int)p.Y))
+                    {
+                        ResetMatch();
+                        return;
+                    }
+                    if (GetHomeDifficultyRect().Contains((int)p.X, (int)p.Y))
+                    {
+                        _difficulty = (_difficulty + 1) % 3;
+                        return;
+                    }
+                    if (GetHomeHelpRect().Contains((int)p.X, (int)p.Y))
+                    {
+                        _homeHelp = !_homeHelp;
+                        return;
+                    }
+                    return;
+                }
+
+                if (_matchState == "win" || _matchState == "lose")
+                {
+                    if (GetEndRematchRect().Contains((int)p.X, (int)p.Y)) { ResetMatch(); return; }
+                    if (GetEndMenuRect().Contains((int)p.X, (int)p.Y))
+                    {
+                        _matchState = "home";
+                        _homeHelp = false;
+                    }
                     return;
                 }
 
@@ -442,6 +489,53 @@ namespace LumiaRoyale.Game
         {
             var box = GetPauseBoxRect();
             return new Rectangle(box.X + 40, box.Y + 108, 220, 38);
+        }
+
+        private Rectangle GetHomeBoxRect()
+        {
+            return new Rectangle(GraphicsDevice.Viewport.Width / 2 - 190,
+                                 GraphicsDevice.Viewport.Height / 2 - 190, 380, 380);
+        }
+
+        private Rectangle GetHomePlayRect()
+        {
+            var box = GetHomeBoxRect();
+            return new Rectangle(box.X + 50, box.Y + 90, 280, 48);
+        }
+
+        private Rectangle GetHomeDifficultyRect()
+        {
+            var box = GetHomeBoxRect();
+            return new Rectangle(box.X + 50, box.Y + 150, 280, 40);
+        }
+
+        private Rectangle GetHomeHelpRect()
+        {
+            var box = GetHomeBoxRect();
+            return new Rectangle(box.X + 50, box.Y + 200, 280, 40);
+        }
+
+        private string GetDifficultyName()
+        {
+            return _difficulty == 0 ? "NOVATO" : (_difficulty == 1 ? "VETERANO" : "MESTRE");
+        }
+
+        private Rectangle GetEndBoxRect()
+        {
+            return new Rectangle(GraphicsDevice.Viewport.Width / 2 - 180,
+                                 GraphicsDevice.Viewport.Height / 2 - 100, 360, 200);
+        }
+
+        private Rectangle GetEndRematchRect()
+        {
+            var box = GetEndBoxRect();
+            return new Rectangle(box.X + 30, box.Y + 144, 150, 36);
+        }
+
+        private Rectangle GetEndMenuRect()
+        {
+            var box = GetEndBoxRect();
+            return new Rectangle(box.X + 190, box.Y + 144, 140, 36);
         }
 
         private void DrawCard(int handIndex)
@@ -527,7 +621,8 @@ namespace LumiaRoyale.Game
         {
             _enemySpawnTimer -= dt;
             if (_enemySpawnTimer > 0) return;
-            _enemySpawnTimer = 1.8f + (float)_rng.NextDouble() * 2.0f;
+            float interval = _difficulty == 0 ? 2.6f : (_difficulty == 2 ? 1.3f : 1.8f);
+            _enemySpawnTimer = interval + (float)_rng.NextDouble() * interval;
 
             var affordable = _deck.Where(c => c.Cost <= _enemyMana).ToList();
             if (affordable.Count == 0) return;
@@ -1197,22 +1292,33 @@ namespace LumiaRoyale.Game
 
         protected override void Draw(GameTime gameTime)
         {
-            GraphicsDevice.Clear(new Color(26, 72, 44));
+            GraphicsDevice.Clear(HomeBackground);
 
-            _spriteBatch.Begin(transformMatrix: Matrix.CreateTranslation(new Vector3(_shakeOffset.X, _shakeOffset.Y, 0f)));
-            DrawArena();
-            DrawLaneHints();
-            DrawDeployHint();
-            DrawTowers();
-            DrawUnits();
-            DrawFx();
-            _spriteBatch.End();
+            bool inMatch = _matchState == "playing" || _matchState == "paused" ||
+                           _matchState == "win" || _matchState == "lose";
+
+            if (inMatch)
+            {
+                _spriteBatch.Begin(transformMatrix: Matrix.CreateTranslation(new Vector3(_shakeOffset.X, _shakeOffset.Y, 0f)));
+                DrawArena();
+                DrawLaneHints();
+                DrawDeployHint();
+                DrawTowers();
+                DrawUnits();
+                DrawFx();
+                _spriteBatch.End();
+            }
 
             // UI in pixel-perfect nearest-neighbor (SE98 / retro look)
             _spriteBatch.Begin(samplerState: Microsoft.Xna.Framework.Graphics.SamplerState.PointClamp);
-            DrawHud();
-            DrawCards();
-            DrawEndOverlay();
+            if (_matchState == "intro") DrawIntro();
+            else if (_matchState == "home") DrawHome();
+            else
+            {
+                DrawHud();
+                DrawCards();
+                DrawEndOverlay();
+            }
             _spriteBatch.End();
 
             base.Draw(gameTime);
@@ -1221,6 +1327,11 @@ namespace LumiaRoyale.Game
         private static int ClampByte(int v)
         {
             return v < 0 ? 0 : (v > 255 ? 255 : v);
+        }
+
+        private static float Clamp01(float v)
+        {
+            return v < 0f ? 0f : (v > 1f ? 1f : v);
         }
 
         private void BuildArenaTexture()
@@ -1306,7 +1417,7 @@ namespace LumiaRoyale.Game
         // Depois que uma lateral cai, mostra o caminho aberto até o rei daquele lado.
         private void DrawLaneHints()
         {
-            if (_matchState == "menu" || _matchState == "win" || _matchState == "lose") return;
+            if (_matchState == "intro" || _matchState == "home" || _matchState == "win" || _matchState == "lose") return;
 
             foreach (var t in _towers)
             {
@@ -2137,29 +2248,93 @@ namespace LumiaRoyale.Game
             }
         }
 
+        // Entrada: fundo Void, logotipo SE98 deslizando e barra carregando até a home.
+        private void DrawIntro()
+        {
+            int vw = GraphicsDevice.Viewport.Width;
+            int vh = GraphicsDevice.Viewport.Height;
+            float t = Math.Max(0f, _introTime);
+
+            DrawVoidGrid(vw, vh);
+
+            int barW = Math.Min(vw - 60, 400);
+            int barX = vw / 2 - barW / 2;
+            int barY = vh / 2 + 46;
+
+            float fade = Clamp01(t / 0.45f);
+            float titleIn = Clamp01((t - 0.25f) / 0.75f);
+            float subIn = Clamp01((t - 0.9f) / 0.6f);
+
+            for (int x = barX; x < barX + barW; x += 2)
+            {
+                float g = (x - barX) / (float)barW;
+                DrawRect(new Rectangle(x, barY - 44, 2, 30), Color.Lerp(Se98TitleA, Se98TitleB, g) * fade);
+            }
+
+            int slide = (int)((1f - titleIn) * 48f);
+            DrawPixelText("LUMIAROYALE", vw / 2 - 11 * 2 * 4 + slide, barY - 36, 4, Color.White * fade);
+            DrawPixelText("ARENA DE CARTAS", vw / 2 - 15 * 2 * 2, barY - 6, 2, new Color(161, 196, 233) * subIn);
+            DrawPixelText("VOID / SE98", vw / 2 - 11 * 2, barY + 16, 1, new Color(120, 150, 210) * subIn);
+
+            DrawBeveledPanel(new Rectangle(barX, barY + 34, barW, 14), true);
+            int fill = (int)(barW * Clamp01(t / 2.6f));
+            for (int x = barX + 2; x < barX + 2 + fill && x < barX + barW - 2; x += 2)
+                DrawRect(new Rectangle(x, barY + 36, 2, 10), Se98Selected);
+
+            if (t > 1.4f)
+                DrawPixelText("TOQUE PARA PULAR", vw / 2 - 16 * 2, barY + 60, 1, Se98Face * 0.7f);
+        }
+
+        private void DrawVoidGrid(int w, int h)
+        {
+            for (int x = 0; x < w; x += 24)
+                DrawRect(new Rectangle(x, 0, 1, h), HomeGrid);
+            for (int y = 0; y < h; y += 24)
+                DrawRect(new Rectangle(0, y, w, 1), HomeGrid);
+        }
+
+        // Home com botões que usam os mesmos retângulos do input.
+        private void DrawHome()
+        {
+            DrawVoidGrid(GraphicsDevice.Viewport.Width, GraphicsDevice.Viewport.Height);
+
+            var box = GetHomeBoxRect();
+            DrawRect(new Rectangle(box.X + 6, box.Y + 6, box.Width, box.Height), new Color(0, 0, 0, 110));
+            DrawBeveledPanel(box, false);
+            for (int x = box.X + 2; x < box.Right - 2; x += 2)
+                DrawRect(new Rectangle(x, box.Y + 2, 2, 26), Color.Lerp(Se98TitleA, Se98TitleB, (x - box.X) / (float)box.Width));
+
+            DrawPixelText("LUMIAROYALE", box.X + 66, box.Y + 8, 4, Color.White);
+            DrawPixelText("ARENA DE CARTAS", box.X + 88, box.Y + 44, 2, Se98Text);
+            DrawPixelText("TORRES NIVEL " + _towerLevel, box.X + 52, box.Y + 68, 1, Se98Shadow);
+
+            DrawBeveledButton(GetHomePlayRect(), "JOGAR");
+            DrawBeveledButton(GetHomeDifficultyRect(), "DIFICULDADE: " + GetDifficultyName(), true);
+            DrawBeveledButton(GetHomeHelpRect(), _homeHelp ? "FECHAR AJUDA" : "COMO JOGAR", _homeHelp);
+
+            if (_homeHelp)
+            {
+                var help = new Rectangle(box.X + 20, box.Y + 248, box.Width - 40, 108);
+                DrawRect(help, new Color(8, 12, 26, 210));
+                DrawBeveledPanel(help, true);
+                DrawPixelText("TOQUE UMA CARTA E DEPOIS O CAMPO", box.X + 30, box.Y + 258, 2, Se98Text);
+                DrawPixelText("VERMELHO = ONDE VOCE PODE POR", box.X + 30, box.Y + 282, 2, Se98Text);
+                DrawPixelText("DERRUBE AS LATERAIS E O REI", box.X + 30, box.Y + 306, 2, Se98Text);
+                DrawPixelText("A MANA VOLTA COM O TEMPO", box.X + 30, box.Y + 330, 2, Se98Shadow);
+            }
+            else
+            {
+                DrawPixelText("DERRUBE O REI PARA GANHAR", box.X + 52, box.Y + 262, 2, Se98Text);
+                DrawPixelText("A IA REAGE A DIFICULDADE", box.X + 52, box.Y + 288, 2, Se98Shadow);
+            }
+
+            DrawPixelText("SE98 / VOID - LUMIA 640", box.X + 76, box.Y + 356, 1, new Color(150, 170, 200));
+        }
+
         private void DrawEndOverlay()
         {
             if (_matchState == "playing") return;
             DrawRect(new Rectangle(0, 0, GraphicsDevice.Viewport.Width, GraphicsDevice.Viewport.Height), new Color(0, 0, 0, 150));
-
-            int vw = GraphicsDevice.Viewport.Width;
-            int vh = GraphicsDevice.Viewport.Height;
-
-            if (_matchState == "menu")
-            {
-                var box = new Rectangle(vw / 2 - 170, vh / 2 - 105, 340, 210);
-                DrawBeveledPanel(box, false);
-                for (int x = box.X + 2; x < box.Right - 2; x += 2)
-                    DrawRect(new Rectangle(x, box.Y + 2, 2, 26), Color.Lerp(Se98TitleA, Se98TitleB, (x - box.X) / (float)box.Width));
-                DrawPixelText("LUMIAROYALE", box.X + 66, box.Y + 8, 4, Color.White);
-                DrawPixelText("ARENA DE CARTAS", box.X + 88, box.Y + 44, 2, Se98Text);
-
-                var play = new Rectangle(box.X + 60, box.Y + 80, 220, 42);
-                DrawBeveledButton(play, "TOQUE PARA JOGAR");
-                DrawPixelText("DESTRUA A TORRE PRINCIPAL", box.X + 48, box.Y + 148, 2, Se98Text);
-                DrawPixelText("V = VITORIA / D = DERROTA", box.X + 60, box.Y + 174, 2, Se98Shadow);
-                return;
-            }
 
             if (_matchState == "paused")
             {
@@ -2175,20 +2350,22 @@ namespace LumiaRoyale.Game
             }
 
             bool win = _matchState == "win";
-            var ebox = new Rectangle(vw / 2 - 180, vh / 2 - 100, 360, 200);
+            var ebox = GetEndBoxRect();
             DrawBeveledPanel(ebox, false);
             for (int x = ebox.X + 2; x < ebox.Right - 2; x += 2)
                 DrawRect(new Rectangle(x, ebox.Y + 2, 2, 32), Color.Lerp(Se98TitleA, Se98TitleB, (x - ebox.X) / (float)ebox.Width));
 
             string title = win ? "VITORIA!" : "DERROTA";
             DrawPixelText(title, ebox.X + (win ? 122 : 132), ebox.Y + 10, 4, Color.White);
+            if (!string.IsNullOrEmpty(_status))
+                DrawPixelText(_status, ebox.X + (360 - _status.Length * 4) / 2, ebox.Y + 38, 1, Se98Shadow);
             DrawPixelText("COROAS " + _playerCrowns + " X " + _enemyCrowns, ebox.X + 100, ebox.Y + 58, 2, Se98Text);
             DrawPixelText("TORRES " + _enemyTowersLost + " X " + _playerTowersLost, ebox.X + 100, ebox.Y + 80, 2, Se98Text);
             int sec = Math.Max(0, (int)Math.Ceiling(_timeLeft));
             DrawPixelText("TEMPO " + (sec / 60) + ":" + (sec % 60).ToString("00"), ebox.X + 124, ebox.Y + 102, 2, Se98Text);
 
-            var again = new Rectangle(ebox.X + 70, ebox.Y + 144, 220, 36);
-            DrawBeveledButton(again, "TOQUE PARA REINICIAR");
+            DrawBeveledButton(GetEndRematchRect(), "REVANCHE");
+            DrawBeveledButton(GetEndMenuRect(), "MENU");
         }
 
         private void DrawBeveledPanel(Rectangle r, bool sunken)

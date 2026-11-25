@@ -67,6 +67,7 @@ namespace LumiaRoyale.Game
         private int _enemyCrowns;
         private int _playerTowersLost;
         private int _enemyTowersLost;
+        private int _towerLevel = TowerBalance.BaseLevel;
 
         private struct Fx
         {
@@ -182,14 +183,17 @@ namespace LumiaRoyale.Game
             float rightLaneX = _arenaRect.Left + _arenaRect.Width * 0.75f;
             float centerX = _arenaRect.Left + _arenaRect.Width * 0.5f;
 
+            int sideHp = TowerBalance.SideHp(_towerLevel);
+            int kingHp = TowerBalance.KingHp(_towerLevel);
+
             // Enemy towers (top): side towers forward (closer to river), king receded (closer to top)
-            _towers.Add(new Tower(new Vector2(leftLaneX, arenaTop + 165), 900, false, true));
-            _towers.Add(new Tower(new Vector2(rightLaneX, arenaTop + 165), 900, false, true));
-            _towers.Add(new Tower(new Vector2(centerX, arenaTop + 80), 1400, true, true));
+            _towers.Add(new Tower(new Vector2(leftLaneX, arenaTop + 165), sideHp, false, true, _towerLevel));
+            _towers.Add(new Tower(new Vector2(rightLaneX, arenaTop + 165), sideHp, false, true, _towerLevel));
+            _towers.Add(new Tower(new Vector2(centerX, arenaTop + 80), kingHp, true, true, _towerLevel));
             // Player towers (bottom): side towers forward (closer to river), king receded (closer to bottom)
-            _towers.Add(new Tower(new Vector2(leftLaneX, arenaBottom - 165), 900, false, false));
-            _towers.Add(new Tower(new Vector2(rightLaneX, arenaBottom - 165), 900, false, false));
-            _towers.Add(new Tower(new Vector2(centerX, arenaBottom - 80), 1400, true, false));
+            _towers.Add(new Tower(new Vector2(leftLaneX, arenaBottom - 165), sideHp, false, false, _towerLevel));
+            _towers.Add(new Tower(new Vector2(rightLaneX, arenaBottom - 165), sideHp, false, false, _towerLevel));
+            _towers.Add(new Tower(new Vector2(centerX, arenaBottom - 80), kingHp, true, false, _towerLevel));
         }
 
         protected override void Update(GameTime gameTime)
@@ -1430,6 +1434,8 @@ namespace LumiaRoyale.Game
                     DrawRect(new Rectangle(hbg.X + hbg.Width * i / 4, hbg.Y, 1, hbg.Height), new Color(0, 0, 0, 110));
                 DrawRect(hbg, new Color(255, 255, 255, 70), 1);
 
+                DrawPixelText("L" + t.Level, body.Center.X - 4, body.Bottom + 1, 1,
+                              new Color(225, 232, 245, 190));
                 if (t.IsMain) DrawKingIndicator(t, body);
             }
         }

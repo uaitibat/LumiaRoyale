@@ -1,0 +1,21 @@
+PunyMonsters - Kurt Gabriel Sotelo (Shade)
+https://merchant-shade.itch.io/16x16-puny-characters
+
+License: CC0 1.0 Universal (public domain dedication).
+Free for commercial and non-commercial use, modification and redistribution.
+No attribution required.
+
+Nine 32x32 creature sheets used in LumiaRoyale:
+  Monster-BlackPanther.png  (Black-Panther-32x32.png)
+  Monster-BlondeDog.png     (Blonde-Dog-32x32.png)
+  Monster-BrownBoar.png     (Brown-Boar-32x32.png)
+  Monster-BrownSpider.png   (Brown-Spider-32x32.png)
+  Monster-GrayBoar.png      (Dirty-Gray-Boar-32x32.png)
+  Monster-GrayWolf.png      (Gray-Wolf-32x32.png)
+  Monster-NavyRat.png       (Navy-Blue-Rat-32x32.png)
+  Monster-OrangeCat.png     (Orange-Cat-32x32.png)
+  Monster-PurpleSpider.png  (Purple-Spider-32x32.png)
+
+Each sheet is 384x256 = 12 columns x 8 rows of 32x32 cells.
+The game reads 4 directions x 3 frames per animation row.
+Files were renamed only; pixel data was not modified.

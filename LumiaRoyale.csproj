@@ -118,6 +118,16 @@
     <Content Include="Assets\Sprites\Puny\Soldier-Yellow.png" />
     <Content Include="Assets\Sprites\Puny\Warrior-Blue.png" />
     <Content Include="Assets\Sprites\Puny\Warrior-Red.png" />
+    <Content Include="Assets\Sprites\Puny\Monsters\LICENSE.txt" />
+    <Content Include="Assets\Sprites\Puny\Monsters\Monster-BlackPanther.png" />
+    <Content Include="Assets\Sprites\Puny\Monsters\Monster-BlondeDog.png" />
+    <Content Include="Assets\Sprites\Puny\Monsters\Monster-BrownBoar.png" />
+    <Content Include="Assets\Sprites\Puny\Monsters\Monster-BrownSpider.png" />
+    <Content Include="Assets\Sprites\Puny\Monsters\Monster-GrayBoar.png" />
+    <Content Include="Assets\Sprites\Puny\Monsters\Monster-GrayWolf.png" />
+    <Content Include="Assets\Sprites\Puny\Monsters\Monster-NavyRat.png" />
+    <Content Include="Assets\Sprites\Puny\Monsters\Monster-OrangeCat.png" />
+    <Content Include="Assets\Sprites\Puny\Monsters\Monster-PurpleSpider.png" />
     <Content Include="Assets\Sprites\Colosso.png" />
     <Content Include="Assets\Sprites\Torreta.png" />
     <Content Include="Assets\ArenaDesert.png" />

@@ -30,7 +30,7 @@ namespace LumiaRoyale.Game
         private Texture2D _homeBannerTex;
 
         // Versão exibida na home para confirmar qual APPX está instalado.
-        private const string BuildTag = "V 1.1.9";
+        private const string BuildTag = "V 1.2.0";
 
         private ArenaDef _arenaDef;
         private string _arenaId = "vale";
@@ -80,9 +80,11 @@ namespace LumiaRoyale.Game
         private static readonly Color HomeBackground = new Color(8, 12, 26);
         private static readonly Color HomeGrid = new Color(40, 60, 100, 45);
 
-        // Puny Characters sheet: 32x32 cells, 8 rows = animations, 24 cols = 8 directions * 3 frames.
+        // Puny Characters: 32x32 cells, 8 rows = animations, 24 cols = 8 directions * 3 frames.
+        // PunyMonsters: mesma célula/linhas, mas 12 cols = 4 directions * 3 frames.
         private const int PunyCell = 32;
         private const int PunyFrontDir = 4; // S (de frente para a câmera)
+        private const string MonsterSpritePrefix = "Puny/Monsters/";
         private const int BannerW = 280;
         private const int BannerH = 60;
 
@@ -2899,6 +2901,8 @@ namespace LumiaRoyale.Game
         private Rectangle GetCardPortraitSource(CardDef def)
         {
             string sp = def.Sprite ?? "";
+            if (sp.StartsWith(MonsterSpritePrefix, StringComparison.Ordinal))
+                return new Rectangle(PunyCell, 0, PunyCell, PunyCell); // frente, frame 1
             if (sp.StartsWith("Puny/"))
                 return new Rectangle((PunyFrontDir * 3 + 1) * PunyCell, 0, PunyCell, PunyCell);
             return new Rectangle(0, 0, PunyCell, PunyCell);
@@ -2919,10 +2923,11 @@ namespace LumiaRoyale.Game
         {
             if (tex == null) return;
 
+            bool monster = (u.Def.Sprite ?? "").StartsWith(MonsterSpritePrefix, StringComparison.Ordinal);
             Vector2 f = u.Facing;
             if (f.LengthSquared() < 0.001f) f = u.IsEnemy ? new Vector2(0, 1) : new Vector2(0, -1);
             f.Normalize();
-            int dirGroup = PunyDirGroup(f);
+            int dirGroup = monster ? MonsterDirGroup(f) : PunyDirGroup(f);
 
             int row;
             int frame;
@@ -2960,7 +2965,21 @@ namespace LumiaRoyale.Game
             Color tint = Color.Lerp(Color.White, u.Def.Color, 0.16f);
             tint = Color.Lerp(tint, team, 0.12f);
             if (u.HitFlash > 0f) tint = Color.Lerp(tint, Color.White, 0.35f);
-            _spriteBatch.Draw(tex, dst, src, tint);
+            // PunyMonsters tem 4 direções; o lado direito é espelhado para olhar à esquerda.
+            var fx = monster && f.X < -0.35f ? SpriteEffects.FlipHorizontally : SpriteEffects.None;
+            _spriteBatch.Draw(tex, dst, src, tint, 0f, Vector2.Zero, fx, 0f);
+        }
+
+        private static int MonsterDirGroup(Vector2 f)
+        {
+            // PunyMonsters: 0=frente, 1=frente-3/4, 2=lado, 3=costas (3 frames cada).
+            float deg = MathHelper.ToDegrees((float)Math.Atan2(f.Y, f.X));
+            if (deg < 0) deg += 360f;
+            int idx = (int)Math.Floor((deg + 22.5f) / 45f) % 8; // 0=E,1=SE,2=S,3=SW,4=W,5=NW,6=N,7=NE
+            if (idx == 2) return 0;
+            if (idx == 1 || idx == 3) return 1;
+            if (idx == 0 || idx == 4) return 2;
+            return 3;
         }
 
         private static int PunyDirGroup(Vector2 f)

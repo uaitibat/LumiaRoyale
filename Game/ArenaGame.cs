@@ -37,6 +37,9 @@ namespace LumiaRoyale.Game
         private static readonly Color Se98TitleA = new Color(161, 196, 233);    // #A1C4E9
         private static readonly Color Se98TitleB = new Color(0, 0, 96);         // #000060
         private static readonly Color Se98Text = new Color(0, 0, 0);
+        // Única cor da área de deploy: vermelho translúcido.
+        private static readonly Color SpawnAreaFill = new Color(255, 70, 70, 38);
+        private static readonly Color SpawnAreaBorder = new Color(255, 110, 110, 150);
 
         // Puny Characters sheet: 32x32 cells, 8 rows = animations, 24 cols = 8 directions * 3 frames.
         private const int PunyCell = 32;
@@ -325,10 +328,19 @@ namespace LumiaRoyale.Game
 
         private void CheckEnd()
         {
+            if (_matchState != "playing") return;
             bool playerMain = _towers.Any(t => !t.IsEnemy && t.IsMain && t.Alive);
             bool enemyMain = _towers.Any(t => t.IsEnemy && t.IsMain && t.Alive);
-            if (!playerMain) { _matchState = "lose"; _status = "Derrota - toque para reiniciar"; }
-            else if (!enemyMain) { _matchState = "win"; _status = "Vitoria! Toque para reiniciar"; }
+            if (!playerMain) EndByKing(false);
+            else if (!enemyMain) EndByKing(true);
+        }
+
+        // Rei caído encerra na hora, sem depender de coroas ou do cronômetro.
+        private void EndByKing(bool playerWon)
+        {
+            if (_matchState != "playing") return;
+            _matchState = playerWon ? "win" : "lose";
+            _status = playerWon ? "VITORIA! REI CAIU" : "DERROTA! REI CAIU";
         }
 
         private void AwardCrown(bool enemyTowerDestroyed)
@@ -1164,6 +1176,7 @@ namespace LumiaRoyale.Game
             {
                 AddBurst(t.Pos, t.IsEnemy ? new Color(255, 130, 110) : new Color(120, 190, 255), 12, 70f);
                 _shake = Math.Max(_shake, t.IsMain ? 1f : 0.65f);
+                if (t.IsMain) EndByKing(t.IsEnemy);
             }
             else if (t.IsMain && !wasAwake)
             {
@@ -1306,13 +1319,9 @@ namespace LumiaRoyale.Game
                 float yEnd = playerLane ? king.Pos.Y + 58f : king.Pos.Y - 58f;
                 int y = (int)Math.Min(yStart, yEnd);
                 int h = (int)Math.Max(8f, Math.Abs(yEnd - yStart));
-                int x = (int)t.Pos.X - 26;
-                Color tint = playerLane ? new Color(120, 190, 255) : new Color(255, 130, 110);
 
-                DrawRect(new Rectangle(x, y, 52, h), new Color(tint.R, tint.G, tint.B, (byte)26));
-                DrawRect(new Rectangle(x, y, 2, h), new Color(tint.R, tint.G, tint.B, (byte)70));
-                DrawRect(new Rectangle(x + 50, y, 2, h), new Color(tint.R, tint.G, tint.B, (byte)70));
-
+                // Sem faixa retangular: só as setas mostram o caminho aberto.
+                Color arrowTint = new Color(255, 230, 170);
                 int dir = playerLane ? -1 : 1;
                 int drift = (int)(_animTime * 34f) % 48;
                 for (int off = 8 + drift; off < h - 8; off += 48)
@@ -1320,7 +1329,7 @@ namespace LumiaRoyale.Game
                     int ay = dir < 0 ? y + h - off : y + off;
                     int ax = (int)t.Pos.X;
                     int a = 95 + (int)(Math.Sin(_animTime * 3f + off) * 25f);
-                    Color arrow = new Color(tint.R, tint.G, tint.B, (byte)ClampByte(a));
+                    Color arrow = new Color(arrowTint.R, arrowTint.G, arrowTint.B, (byte)ClampByte(a));
                     int low = dir < 0 ? 3 : 0;
                     int high = dir < 0 ? 0 : 3;
                     DrawRect(new Rectangle(ax - 7, ay + low, 5, 2), arrow);
@@ -1336,20 +1345,20 @@ namespace LumiaRoyale.Game
             var card = _hand[_selectedHand];
             if (card.Kind == CardKind.Spell)
             {
-                DrawRect(_arenaRect, new Color(255, 160, 80, 20));
-                DrawRect(_arenaRect, new Color(255, 180, 120, 90), 2);
+                DrawRect(_arenaRect, SpawnAreaFill);
+                DrawRect(_arenaRect, SpawnAreaBorder, 2);
                 return;
             }
             int midY = _arenaRect.Center.Y + 20;
             var allowed = new Rectangle(_arenaRect.X, midY, _arenaRect.Width, _arenaRect.Bottom - midY);
-            DrawRect(allowed, new Color(120, 255, 160, 30));
-            DrawRect(allowed, new Color(150, 255, 180, 120), 2);
+            DrawRect(allowed, SpawnAreaFill);
+            DrawRect(allowed, SpawnAreaBorder, 2);
 
-            // pockets when enemy side towers are down
+            // pockets when enemy side towers are down - mesma cor fixa da área de spawn
             foreach (var pocket in GetDeployPockets(false))
             {
-                DrawRect(pocket, new Color(120, 255, 160, 35));
-                DrawRect(pocket, new Color(180, 255, 200, 140), 2);
+                DrawRect(pocket, SpawnAreaFill);
+                DrawRect(pocket, SpawnAreaBorder, 2);
             }
         }
 

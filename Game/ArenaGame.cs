@@ -49,6 +49,8 @@ namespace LumiaRoyale.Game
         // Puny Characters sheet: 32x32 cells, 8 rows = animations, 24 cols = 8 directions * 3 frames.
         private const int PunyCell = 32;
         private const int PunyFrontDir = 4; // S (de frente para a câmera)
+        private const int BannerW = 280;
+        private const int BannerH = 40;
 
         private readonly List<Unit> _units = new List<Unit>();
         private readonly List<Tower> _towers = new List<Tower>();
@@ -256,8 +258,8 @@ namespace LumiaRoyale.Game
             int fullH = src.Height;
             var all = new Color[w * fullH];
             src.GetData(all);
-            // Recorta o centro da foto para o proporção 300x104, sem esticar a imagem.
-            int h = Math.Min(fullH, (int)(w * 104f / 300f));
+            // Recorta o centro da foto para a proporção do banner, sem esticar a imagem.
+            int h = Math.Min(fullH, (int)(w * (float)BannerH / BannerW));
             int top = (fullH - h) / 2;
             var raw = new Color[w * h];
             for (int y = 0; y < h; y++)
@@ -742,8 +744,8 @@ namespace LumiaRoyale.Game
         private Rectangle GetHomeBannerRect()
         {
             // Bandeira retangular na esquerda (X maior que Y).
-            int w = HX(300);
-            int h = HY(104);
+            int w = HX(BannerW);
+            int h = HY(BannerH);
             return new Rectangle(HX(14), HY(94), w, h);
         }
 

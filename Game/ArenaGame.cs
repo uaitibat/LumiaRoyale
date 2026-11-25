@@ -30,7 +30,7 @@ namespace LumiaRoyale.Game
         private Texture2D _homeBannerTex;
 
         // Versão exibida na home para confirmar qual APPX está instalado.
-        private const string BuildTag = "V 1.1.0";
+        private const string BuildTag = "V 1.1.1";
 
         private ArenaDef _arenaDef;
         private string _arenaId = "vale";
@@ -765,10 +765,10 @@ namespace LumiaRoyale.Game
                 var g = TouchPanel.ReadGesture();
 
                 // Arrastar da borda esquerda abre o painel de cartas; arrastar de volta fecha.
-                if (_matchState == "home")
+                // Seletor de arena é modal: não abre/fecha o painel de cartas,
+                // mas continua aceitando toques nos cards e no botão FECHAR.
+                if (_matchState == "home" && !_arenaPickerOpen)
                 {
-                    // Seletor de arena é modal: não abre/fecha o painel de cartas.
-                    if (_arenaPickerOpen) continue;
                     if (g.GestureType == GestureType.HorizontalDrag)
                     {
                         _cardsDragging = true;

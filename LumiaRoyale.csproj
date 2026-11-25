@@ -118,6 +118,7 @@
     <Content Include="Assets\Sprites\Puny\Warrior-Red.png" />
     <Content Include="Assets\Sprites\Colosso.png" />
     <Content Include="Assets\Sprites\Torreta.png" />
+    <Content Include="Assets\ArenaForest.png" />
     <Content Include="Assets\ArenaForest.jpg" />
     <Content Include="Assets\HomeBanner.jpg" />
     <Content Include="Assets\HomeBackground.jpg" />

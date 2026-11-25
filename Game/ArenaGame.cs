@@ -33,6 +33,9 @@ namespace LumiaRoyale.Game
         private const float ArenaRiverHalfNorm = 0.060f;
         private const float ArenaBridgeHalfNorm = 0.068f;
 
+        // Versão exibida na home para confirmar qual APPX está instalado.
+        private const string BuildTag = "V 1.0.1";
+
         private float RiverHalf
         {
             get { return _arenaBgTex != null ? _arenaRect.Height * ArenaRiverHalfNorm : 14f; }
@@ -313,7 +316,8 @@ namespace LumiaRoyale.Game
                 var tex = LoadTex("Assets/Sprites/" + def.Sprite);
                 if (tex != null) _sprites[def.Sprite] = tex;
             }
-            _arenaBgTex = LoadTex("Assets/ArenaForest.jpg");
+            // PNG primeiro (decodifica de forma mais confiável no W10M) e JPEG como reserva.
+            _arenaBgTex = LoadTex("Assets/ArenaForest.png") ?? LoadTex("Assets/ArenaForest.jpg");
             _homeBgTex = LoadTex("Assets/HomeBackground.jpg");
             _homeBannerTex = LoadBannerTexture("Assets/HomeBanner.jpg");
         }
@@ -427,11 +431,18 @@ namespace LumiaRoyale.Game
             _status = "Toque numa carta e depois na sua metade";
             _matchState = "playing";
             _statusTimer = 3f;
-            _timeLeft = 180f;
+
+            // Diagnóstico: se a textura do cenário falhou, avisa na partida.
+            if (_arenaBgTex == null)
+            {
+                _status = "CENARIO NAO CARREGOU";
+                _statusTimer = 8f;
+            }
             _playerCrowns = 0;
             _enemyCrowns = 0;
             _playerTowersLost = 0;
             _enemyTowersLost = 0;
+            _timeLeft = 180f;
 
             int w = GraphicsDevice.Viewport.Width;
             int h = GraphicsDevice.Viewport.Height;
@@ -3276,6 +3287,10 @@ namespace LumiaRoyale.Game
 
             DrawPixelText("TROFEUS " + _trophies + "  V" + _wins + " D" + _losses,
                           s.X + HX(6), s.Y + HY(58), 2, new Color(170, 195, 230));
+
+            // Identificador da build instalada (ajuda a confirmar que o APPX novo entrou).
+            DrawPixelText(BuildTag, s.Right - HX(8) - BuildTag.Length * 8, s.Y + HY(58), 2,
+                          new Color(120, 145, 180));
         }
 
         private void DrawHomeChests()

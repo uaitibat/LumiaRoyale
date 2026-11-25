@@ -26,6 +26,8 @@ namespace LumiaRoyale.Game
         private Texture2D _colossoTex;
         private Texture2D _torretaTex;
         private Texture2D _arenaTex;
+        private Texture2D _homeBgTex;
+        private Texture2D _homeBannerTex;
 
         private float _animTime;
 
@@ -76,15 +78,18 @@ namespace LumiaRoyale.Game
         private int _towerLevel = TowerBalance.BaseLevel;
         private float _introTime;
         private int _difficulty; // 0 = Novato, 1 = Veterano, 2 = Mestre
-        private bool _homeHelp;
 
         // Progresso local (sem rede, salvo no LocalSettings).
         private int _trophies;
         private int _wins;
         private int _losses;
-        private int _bestCrowns;
+        private int _crowns;
+        private int _coins;
+        private int _gems;
         private int _chestWins;
         private bool _chestReady;
+        private bool[] _chestOpened = new bool[4];
+        private int _homeTab; // 0 = batalha, 1 = cartas
         private int _selectedDeckCard = -1;
         private string _homeToast = "";
         private float _homeToastTimer;
@@ -156,9 +161,13 @@ namespace LumiaRoyale.Game
             _trophies = ReadInt(v, "trophies");
             _wins = ReadInt(v, "wins");
             _losses = ReadInt(v, "losses");
-            _bestCrowns = ReadInt(v, "bestCrowns");
+            _crowns = ReadInt(v, "crowns");
+            _coins = ReadInt(v, "coins");
+            _gems = ReadInt(v, "gems");
             _chestWins = ReadInt(v, "chestWins");
             _chestReady = ReadBool(v, "chestReady");
+            for (int i = 0; i < _chestOpened.Length; i++)
+                _chestOpened[i] = ReadBool(v, "chestOpened" + i);
             _towerLevel = TowerBalance.BaseLevel + _trophies / 150;
         }
 
@@ -168,9 +177,13 @@ namespace LumiaRoyale.Game
             v["trophies"] = _trophies;
             v["wins"] = _wins;
             v["losses"] = _losses;
-            v["bestCrowns"] = _bestCrowns;
+            v["crowns"] = _crowns;
+            v["coins"] = _coins;
+            v["gems"] = _gems;
             v["chestWins"] = _chestWins;
             v["chestReady"] = _chestReady;
+            for (int i = 0; i < _chestOpened.Length; i++)
+                v["chestOpened" + i] = _chestOpened[i];
         }
 
         private void ShowHomeToast(string text)
@@ -186,8 +199,15 @@ namespace LumiaRoyale.Game
             {
                 _wins++;
                 _trophies += 30;
+                _coins += 50;
                 _chestWins++;
-                if (_chestWins >= 3) { _chestWins = 0; _chestReady = true; }
+                if (_chestWins >= 3)
+                {
+                    _chestWins = 0;
+                    if (_chestOpened.All(o => o))
+                        for (int i = 0; i < _chestOpened.Length; i++) _chestOpened[i] = false;
+                    _chestReady = true;
+                }
             }
             else
             {
@@ -195,7 +215,7 @@ namespace LumiaRoyale.Game
                 _trophies = Math.Max(0, _trophies - 10);
             }
 
-            _bestCrowns = Math.Max(_bestCrowns, _playerCrowns);
+            _crowns += _playerCrowns;
             int newLevel = TowerBalance.BaseLevel + _trophies / 150;
             if (newLevel > _towerLevel)
             {
@@ -221,6 +241,32 @@ namespace LumiaRoyale.Game
             _punyMageRedTex = LoadTex("Assets/Sprites/Puny/Mage-Red.png");
             _colossoTex = LoadTex("Assets/Sprites/Colosso.png");
             _torretaTex = LoadTex("Assets/Sprites/Torreta.png");
+            _homeBgTex = LoadTex("Assets/HomeBackground.jpg");
+            _homeBannerTex = LoadBannerTexture("Assets/HomeBanner.jpg");
+        }
+
+        // Recorta a ponta direita do banner em forma de "<" (bandeira).
+        private Texture2D LoadBannerTexture(string relativePath)
+        {
+            var src = LoadTex(relativePath);
+            if (src == null) return null;
+            int w = src.Width;
+            int h = src.Height;
+            var data = new Color[w * h];
+            src.GetData(data);
+            int notch = Math.Max(24, w / 5);
+            float half = h / 2f;
+            for (int y = 0; y < h; y++)
+            {
+                int cut = w - notch + (int)(notch * Math.Abs(y - half) / half);
+                if (cut < 0) cut = 0;
+                if (cut > w) cut = w;
+                for (int x = cut; x < w; x++)
+                    data[y * w + x] = new Color(data[y * w + x].R, data[y * w + x].G, data[y * w + x].B, (byte)0);
+            }
+            var tex = new Texture2D(GraphicsDevice, w, h);
+            tex.SetData(data);
+            return tex;
         }
 
         private Texture2D LoadTex(string relativePath)
@@ -468,6 +514,35 @@ namespace LumiaRoyale.Game
 
                 if (_matchState == "home")
                 {
+                    // Aba "cartas": painel lateral; toque na aba "batalha" volta.
+                    if (GetNavCardsRect().Contains((int)p.X, (int)p.Y))
+                    {
+                        _homeTab = 1;
+                        return;
+                    }
+                    if (GetNavBattleRect().Contains((int)p.X, (int)p.Y))
+                    {
+                        _homeTab = 0;
+                        return;
+                    }
+                    if (_homeTab == 1)
+                    {
+                        if (GetCardsPanelCloseRect().Contains((int)p.X, (int)p.Y))
+                        {
+                            _homeTab = 0;
+                            return;
+                        }
+                        for (int i = 0; i < _deck.Length; i++)
+                        {
+                            if (GetHomeCardRect(i).Contains((int)p.X, (int)p.Y))
+                            {
+                                _selectedDeckCard = _selectedDeckCard == i ? -1 : i;
+                                return;
+                            }
+                        }
+                        return;
+                    }
+
                     if (GetHomePlayRect().Contains((int)p.X, (int)p.Y))
                     {
                         ResetMatch();
@@ -476,34 +551,31 @@ namespace LumiaRoyale.Game
                     if (GetHomeDifficultyRect().Contains((int)p.X, (int)p.Y))
                     {
                         _difficulty = (_difficulty + 1) % 3;
+                        ShowHomeToast("DIFICULDADE: " + GetDifficultyName());
                         return;
                     }
-                    if (GetHomeHelpRect().Contains((int)p.X, (int)p.Y))
+                    if (GetHomeExitRect().Contains((int)p.X, (int)p.Y))
                     {
-                        _homeHelp = !_homeHelp;
+                        Windows.UI.Xaml.Application.Current.Exit();
                         return;
                     }
-                    if (GetHomeChestRect().Contains((int)p.X, (int)p.Y))
+                    for (int i = 0; i < 4; i++)
                     {
-                        if (_chestReady)
+                        if (!GetHomeChestRect(i).Contains((int)p.X, (int)p.Y)) continue;
+                        if (_chestReady && !_chestOpened[i])
                         {
+                            _chestOpened[i] = true;
                             _chestReady = false;
+                            _chestWins = 0;
                             _trophies += 25;
+                            _gems += 10;
                             int nextLevel = TowerBalance.BaseLevel + _trophies / 150;
                             if (nextLevel > _towerLevel) _towerLevel = nextLevel;
-                            ShowHomeToast("BAU ABERTO +25 TROFEUS");
+                            ShowHomeToast("BAU " + (i + 1) + " ABERTO +25 TROFEUS +10 GEMAS");
                             SaveProgress();
                         }
-                        else ShowHomeToast("GANHE 3 PARTIDAS PARA O BAU");
+                        else ShowHomeToast(_chestOpened[i] ? "BAU JA ABERTO" : "GANHE 3 PARTIDAS PARA O BAU");
                         return;
-                    }
-                    for (int i = 0; i < _deck.Length; i++)
-                    {
-                        if (GetHomeDeckRect(i).Contains((int)p.X, (int)p.Y))
-                        {
-                            _selectedDeckCard = _selectedDeckCard == i ? -1 : i;
-                            return;
-                        }
                     }
                     return;
                 }
@@ -514,7 +586,7 @@ namespace LumiaRoyale.Game
                     if (GetEndMenuRect().Contains((int)p.X, (int)p.Y))
                     {
                         _matchState = "home";
-                        _homeHelp = false;
+                        _homeTab = 0;
                     }
                     return;
                 }
@@ -600,60 +672,103 @@ namespace LumiaRoyale.Game
             return new Rectangle(box.X + 40, box.Y + 108, 220, 38);
         }
 
-        private Rectangle GetHomeBoxRect()
+        // Layout da home em coordenadas de projeto 480x800, escalado para a viewport.
+        private int HX(float v) { return (int)(v * GraphicsDevice.Viewport.Width / 480f); }
+        private int HY(float v) { return (int)(v * GraphicsDevice.Viewport.Height / 800f); }
+
+        private Rectangle GetHomeTopBarRect()
         {
-            return new Rectangle(GraphicsDevice.Viewport.Width / 2 - 190,
-                                 GraphicsDevice.Viewport.Height / 2 - 190, 380, 380);
+            return new Rectangle(HX(12), HY(8), HX(456), HY(78));
         }
 
-        private Rectangle GetHomePlayRect()
+        private Rectangle GetHomeBannerRect()
         {
-            var box = GetHomeBoxRect();
-            return new Rectangle(box.X + 50, box.Y + 90, 280, 48);
+            int w = HX(334);
+            int h = HY(188);
+            return new Rectangle(GraphicsDevice.Viewport.Width / 2 - w / 2, HY(92), w, h);
         }
 
-        private Rectangle GetHomeDifficultyRect()
+        private Rectangle GetHomeNickRect()
         {
-            var box = GetHomeBoxRect();
-            return new Rectangle(box.X + 50, box.Y + 150, 280, 40);
-        }
-
-        private Rectangle GetHomeHelpRect()
-        {
-            var box = GetHomeBoxRect();
-            return new Rectangle(box.X + 50, box.Y + 200, 280, 40);
-        }
-
-        private Rectangle GetHomeChestRect()
-        {
-            var box = GetHomeBoxRect();
-            return new Rectangle(box.X + 110, box.Bottom + 16, 160, 118);
-        }
-
-        private Rectangle GetHomeDeckPanelRect()
-        {
-            return new Rectangle(24, GraphicsDevice.Viewport.Height - 300,
-                                 GraphicsDevice.Viewport.Width - 48, 216);
-        }
-
-        private Rectangle GetHomeDeckRect(int index)
-        {
-            var p = GetHomeDeckPanelRect();
-            const int gap = 10;
-            int cw = (p.Width - 24 - gap * 3) / 4;
-            int col = index % 4;
-            int row = index / 4;
-            return new Rectangle(p.X + 12 + col * (cw + gap), p.Y + 34 + row * 88, cw, 80);
-        }
-
-        private Rectangle GetHomeStatsRect()
-        {
-            return new Rectangle(24, 24, GraphicsDevice.Viewport.Width - 48, 116);
+            var b = GetHomeBannerRect();
+            return new Rectangle(b.X, b.Bottom + HY(3), b.Width, HY(25));
         }
 
         private Rectangle GetHomeArenaRect()
         {
-            return new Rectangle(0, 148, GraphicsDevice.Viewport.Width, 296);
+            int size = HX(276);
+            var nick = GetHomeNickRect();
+            return new Rectangle(GraphicsDevice.Viewport.Width / 2 - size / 2, nick.Bottom + HY(4), size, size);
+        }
+
+        private Rectangle GetHomeExitRect()
+        {
+            var a = GetHomeArenaRect();
+            int bw = (a.Width - HX(16)) / 3;
+            return new Rectangle(a.X, a.Bottom + HY(4), bw, HY(48));
+        }
+
+        private Rectangle GetHomePlayRect()
+        {
+            var a = GetHomeArenaRect();
+            int bw = (a.Width - HX(16)) / 3;
+            return new Rectangle(a.X + bw + HX(8), a.Bottom + HY(4), bw, HY(48));
+        }
+
+        private Rectangle GetHomeDifficultyRect()
+        {
+            var a = GetHomeArenaRect();
+            int bw = (a.Width - HX(16)) / 3;
+            return new Rectangle(a.X + (bw + HX(8)) * 2, a.Bottom + HY(4), bw, HY(48));
+        }
+
+        private Rectangle GetHomeChestRect(int index)
+        {
+            var a = GetHomeArenaRect();
+            var buttons = GetHomePlayRect();
+            int gap = HX(8);
+            int cw = (a.Width - gap * 3) / 4;
+            return new Rectangle(a.X + index * (cw + gap), buttons.Bottom + HY(8), cw, HY(70));
+        }
+
+        private Rectangle GetNavRect()
+        {
+            return new Rectangle(HX(12), HY(730), HX(456), HY(62));
+        }
+
+        private Rectangle GetNavCardsRect()
+        {
+            var n = GetNavRect();
+            return new Rectangle(n.X + 4, n.Y + 4, n.Width / 2 - 6, n.Height - 8);
+        }
+
+        private Rectangle GetNavBattleRect()
+        {
+            var n = GetNavRect();
+            return new Rectangle(n.X + n.Width / 2 + 2, n.Y + 4, n.Width / 2 - 6, n.Height - 8);
+        }
+
+        private Rectangle GetCardsPanelRect()
+        {
+            var n = GetNavRect();
+            return new Rectangle(0, HY(84), HX(400), n.Y - HY(92));
+        }
+
+        private Rectangle GetCardsPanelCloseRect()
+        {
+            var p = GetCardsPanelRect();
+            return new Rectangle(p.Right - HX(68), p.Y + HY(6), HX(56), HY(30));
+        }
+
+        private Rectangle GetHomeCardRect(int index)
+        {
+            var p = GetCardsPanelRect();
+            int cw = (p.Width - HX(36)) / 2;
+            int ch = HY(102);
+            int col = index % 2;
+            int row = index / 2;
+            return new Rectangle(p.X + HX(12) + col * (cw + HX(12)),
+                                 p.Y + HY(44) + row * (ch + HY(8)), cw, ch);
         }
 
         private string GetDifficultyName()
@@ -2413,7 +2528,10 @@ namespace LumiaRoyale.Game
             int vh = GraphicsDevice.Viewport.Height;
             float t = Math.Max(0f, _introTime);
 
-            DrawVoidGrid(vw, vh);
+            if (_homeBgTex != null)
+                _spriteBatch.Draw(_homeBgTex, new Rectangle(0, 0, vw, vh), new Color(255, 255, 255, 170));
+            else DrawVoidGrid(vw, vh);
+            DrawRect(new Rectangle(0, 0, vw, vh), new Color(8, 12, 26, 110));
 
             int barW = Math.Min(vw - 60, 400);
             int barX = vw / 2 - barW / 2;
@@ -2451,58 +2569,70 @@ namespace LumiaRoyale.Game
                 DrawRect(new Rectangle(0, y, w, 1), HomeGrid);
         }
 
-        // Home com botões que usam os mesmos retângulos do input.
+        // Home: aba Batalha com arena quadrada e aba Cartas com painel lateral.
         private void DrawHome()
         {
             int vw = GraphicsDevice.Viewport.Width;
             int vh = GraphicsDevice.Viewport.Height;
-            DrawVoidGrid(vw, vh);
+
+            if (_homeBgTex != null)
+                _spriteBatch.Draw(_homeBgTex, new Rectangle(0, 0, vw, vh), Color.White);
+            else DrawVoidGrid(vw, vh);
+            DrawRect(new Rectangle(0, 0, vw, vh), new Color(8, 12, 26, 70));
+
+            DrawHomeTopBar();
+            DrawHomeBanner();
             DrawHomeArena();
-            DrawHomeStats();
+            DrawHomeControls();
+            DrawHomeChests();
+            DrawHomeNav();
 
-            var box = GetHomeBoxRect();
-            DrawRect(new Rectangle(box.X + 6, box.Y + 6, box.Width, box.Height), new Color(0, 0, 0, 110));
-            DrawBeveledPanel(box, false);
-            for (int x = box.X + 2; x < box.Right - 2; x += 2)
-                DrawRect(new Rectangle(x, box.Y + 2, 2, 26), Color.Lerp(Se98TitleA, Se98TitleB, (x - box.X) / (float)box.Width));
-
-            DrawPixelText("LUMIAROYALE", box.X + 66, box.Y + 8, 4, Color.White);
-            DrawPixelText("ARENA DE CARTAS", box.X + 100, box.Y + 42, 3, Se98Text);
-            DrawPixelText("TORRES NIVEL " + _towerLevel, box.X + 134, box.Y + 68, 2, Se98Shadow);
-
-            DrawBeveledButton(GetHomePlayRect(), "JOGAR");
-            DrawBeveledButton(GetHomeDifficultyRect(), "DIFICULDADE: " + GetDifficultyName(), true);
-            DrawBeveledButton(GetHomeHelpRect(), _homeHelp ? "FECHAR AJUDA" : "COMO JOGAR", _homeHelp);
-
-            if (_homeHelp)
-            {
-                var help = new Rectangle(box.X + 20, box.Y + 248, box.Width - 40, 108);
-                DrawRect(help, new Color(8, 12, 26, 210));
-                DrawBeveledPanel(help, true);
-                DrawPixelText("TOQUE CARTA E DEPOIS O CAMPO", box.X + 22, box.Y + 256, 3, Se98Text);
-                DrawPixelText("VERMELHO - AREA DE DEPLOY", box.X + 22, box.Y + 278, 3, Se98Text);
-                DrawPixelText("DERRUBE LATERAIS E O REI", box.X + 22, box.Y + 300, 3, Se98Text);
-                DrawPixelText("A MANA VOLTA COM O TEMPO", box.X + 22, box.Y + 322, 3, Se98Shadow);
-            }
-            else
-            {
-                DrawPixelText("DERRUBE O REI PARA GANHAR", box.X + 40, box.Y + 260, 3, Se98Text);
-                DrawPixelText("A IA REAGE A DIFICULDADE", box.X + 46, box.Y + 290, 3, Se98Shadow);
-            }
-
-            DrawPixelText("SE98 / VOID - LUMIA 640", box.X + 98, box.Y + 354, 2, new Color(150, 170, 200));
-
-            DrawHomeChest();
-            DrawHomeDeck();
+            if (_homeTab == 1) DrawHomeCardsPanel();
 
             if (_homeToastTimer > 0f && !string.IsNullOrEmpty(_homeToast))
             {
-                var tr = new Rectangle(box.X, box.Y - 34, box.Width, 28);
-                DrawRect(tr, new Color(8, 12, 26, 230));
+                var tr = new Rectangle(vw / 2 - 220, GetNavRect().Y - 40, 440, 30);
+                DrawRect(tr, new Color(8, 12, 26, 235));
                 DrawBeveledPanel(tr, true);
                 DrawPixelText(_homeToast, tr.Center.X - _homeToast.Length * 6, tr.Center.Y - 7, 3,
                               new Color(255, 230, 150));
             }
+        }
+
+        private void DrawHomeBanner()
+        {
+            var b = GetHomeBannerRect();
+            if (_homeBannerTex != null)
+                _spriteBatch.Draw(_homeBannerTex, b, Color.White);
+            else
+            {
+                DrawRect(b, new Color(20, 34, 70));
+                DrawRect(b, new Color(120, 160, 220), 2);
+            }
+            DrawRect(new Rectangle(b.X, b.Bottom - 4, b.Width - 40, 4), new Color(0, 0, 0, 120));
+
+            var nick = GetHomeNickRect();
+            DrawRect(new Rectangle(nick.X, nick.Y, nick.Width, nick.Height), new Color(8, 12, 26, 200));
+            DrawBeveledPanel(nick, true);
+            DrawPixelText("UAITI", nick.X + 16, nick.Y + 10, 3, Color.White);
+            DrawPixelText("COROAS " + _crowns, nick.Right - 16 - 11 * 6, nick.Y + 10, 3,
+                          new Color(255, 220, 130));
+        }
+
+        private void DrawHomeControls()
+        {
+            DrawBeveledButton(GetHomeExitRect(), "SAIR");
+            DrawBeveledButton(GetHomePlayRect(), "JOGAR");
+            DrawBeveledButton(GetHomeDifficultyRect(), "DIF " + GetDifficultyName(), true, 2);
+        }
+
+        private void DrawHomeNav()
+        {
+            var n = GetNavRect();
+            DrawBeveledPanel(n, false);
+            DrawRect(new Rectangle(n.X + 2, n.Y + 2, n.Width - 4, n.Height - 4), new Color(8, 12, 26));
+            DrawBeveledButton(GetNavCardsRect(), "CARTAS", _homeTab == 1);
+            DrawBeveledButton(GetNavBattleRect(), "BATALHA", _homeTab == 0);
         }
 
         private void DrawHomeArena()
@@ -2581,66 +2711,94 @@ namespace LumiaRoyale.Game
             }
         }
 
-        private void DrawHomeStats()
+        private void DrawHomeTopBar()
         {
-            var s = GetHomeStatsRect();
+            var s = GetHomeTopBarRect();
             DrawBeveledPanel(s, false);
-            DrawRect(new Rectangle(s.X + 2, s.Y + 24, s.Width - 4, s.Height - 26), new Color(8, 12, 26));
-            for (int x = s.X + 2; x < s.Right - 2; x += 2)
-                DrawRect(new Rectangle(x, s.Y + 2, 2, 22),
-                         Color.Lerp(Se98TitleA, Se98TitleB, (x - s.X) / (float)s.Width));
+            DrawRect(new Rectangle(s.X + 2, s.Y + 2, s.Width - 4, s.Height - 4), new Color(8, 12, 26));
 
-            DrawPixelText("NIVEL " + _towerLevel, s.X + 18, s.Y + 8, 3, Color.White);
-            DrawPixelText("TROFEUS " + _trophies, s.X + 210, s.Y + 8, 3, Se98Face);
-            DrawPixelText("V " + _wins + " / D " + _losses, s.X + 430, s.Y + 8, 3, Se98Face);
-            DrawPixelText("RECORDE " + _bestCrowns + " COROAS", s.X + 18, s.Y + 40, 2,
-                          new Color(180, 200, 230));
+            DrawPixelText("NIV " + _towerLevel, s.X + HX(6), s.Y + HY(4), 2, Color.White);
 
             const int perLevel = 150;
-            var bar = new Rectangle(s.X + 18, s.Y + 74, s.Width - 36, 20);
+            var bar = new Rectangle(s.X + HX(6), s.Y + HY(30), HX(250), HY(16));
             DrawBeveledPanel(bar, true);
             int fill = (int)((bar.Width - 4) * (_trophies % perLevel) / (float)perLevel);
             for (int x = bar.X + 2; x < bar.X + 2 + fill; x += 2)
                 DrawRect(new Rectangle(x, bar.Y + 2, 2, bar.Height - 4), new Color(255, 200, 90));
+            string xp = (_trophies % perLevel) + "/" + perLevel;
+            DrawPixelText("XP " + xp, bar.X + 2, bar.Y + HY(20), 2, Se98Face);
+
+            int ix = s.X + HX(272);
+            DrawRect(new Rectangle(ix, s.Y + HY(10), HX(20), HX(20)), new Color(240, 200, 80));
+            DrawRect(new Rectangle(ix, s.Y + HY(10), HX(20), HX(20)), new Color(120, 80, 20), 1);
+            DrawPixelText(_coins.ToString(), ix + HX(26), s.Y + HY(12), 2, new Color(255, 230, 150));
+
+            ix = s.X + HX(356);
+            DrawRect(new Rectangle(ix, s.Y + HY(10), HX(18), HX(22)), new Color(120, 210, 250));
+            DrawRect(new Rectangle(ix, s.Y + HY(10), HX(18), HX(22)), new Color(40, 90, 150), 1);
+            DrawPixelText(_gems.ToString(), ix + HX(24), s.Y + HY(12), 2, new Color(190, 235, 255));
+
+            DrawPixelText("TROFEUS " + _trophies + "  V" + _wins + " D" + _losses,
+                          s.X + HX(6), s.Y + HY(58), 2, new Color(170, 195, 230));
         }
 
-        private void DrawHomeChest()
+        private void DrawHomeChests()
         {
-            var c = GetHomeChestRect();
-            DrawBeveledPanel(c, false);
-            DrawRect(new Rectangle(c.X + 2, c.Y + 2, c.Width - 4, 24), new Color(8, 12, 26));
-
-            Color wood = _chestReady ? new Color(190, 140, 70) : new Color(110, 86, 60);
-            var body = new Rectangle(c.X + 10, c.Y + 42, c.Width - 20, c.Height - 52);
-            var lid = new Rectangle(c.X + 10, c.Y + 30, c.Width - 20, 22);
-            DrawRect(body, wood);
-            DrawRect(body, new Color(0, 0, 0, 60), 1);
-            DrawRect(lid, wood);
-            DrawRect(lid, new Color(0, 0, 0, 50), 1);
-            DrawRect(new Rectangle(c.Center.X - 6, c.Center.Y + 6, 12, 16), new Color(240, 210, 120));
-            DrawRect(new Rectangle(c.Center.X - 3, c.Center.Y + 10, 6, 8), new Color(80, 60, 30));
-
-            string label = _chestReady ? "ABRIR BAU" : "BAU " + _chestWins + "/3";
-            DrawPixelText(label, c.Center.X - label.Length * 6, c.Y + 8, 3,
-                          _chestReady ? new Color(255, 230, 150) : Se98Face);
-            if (_chestReady)
+            for (int i = 0; i < 4; i++)
             {
-                int pulse = ClampByte((int)(Math.Sin(_animTime * 4f) * 20f));
-                DrawRect(new Rectangle(c.X + 8, c.Y + 26, c.Width - 16, 4),
-                         new Color(255, 230 - pulse, 120));
+                var c = GetHomeChestRect(i);
+                bool ready = _chestReady && !_chestOpened[i];
+                bool opened = _chestOpened[i];
+                DrawBeveledPanel(c, false);
+                DrawRect(new Rectangle(c.X + 2, c.Y + 2, c.Width - 4, c.Height - 4),
+                         new Color(10, 16, 32));
+
+                Color wood = opened ? new Color(70, 70, 76)
+                           : ready ? new Color(190, 140, 70) : new Color(110, 86, 60);
+                int pw = c.Width - HX(20);
+                var body = new Rectangle(c.X + HX(10), c.Y + HY(28), pw, HY(34));
+                var lid = new Rectangle(c.X + HX(10), c.Y + HY(18), pw, HY(14));
+                DrawRect(body, wood);
+                DrawRect(body, new Color(0, 0, 0, 60), 1);
+                DrawRect(lid, wood);
+                DrawRect(lid, new Color(0, 0, 0, 50), 1);
+                if (!opened)
+                {
+                    DrawRect(new Rectangle(c.Center.X - HX(5), c.Y + HY(36), HX(10), HX(12)),
+                             new Color(240, 210, 120));
+                }
+                else
+                {
+                    DrawRect(new Rectangle(c.X + HX(12), c.Y + HY(22), pw - HX(4), HY(12)),
+                             new Color(30, 34, 44));
+                }
+
+                string label = opened ? "ABERTO" : ready ? "ABRIR" : (i + 1) + "/3";
+                DrawPixelText(label, c.Center.X - label.Length * 6, c.Y + HY(4), 2,
+                              ready ? new Color(255, 230, 150) : Se98Face);
+                if (ready)
+                {
+                    int pulse = ClampByte((int)(Math.Sin(_animTime * 4f + i) * 20f));
+                    DrawRect(new Rectangle(c.X + 4, c.Bottom - HY(4), c.Width - 8, HY(3)),
+                             new Color(255, 230 - pulse, 120));
+                }
             }
         }
 
-        private void DrawHomeDeck()
+        private void DrawHomeCardsPanel()
         {
-            var p = GetHomeDeckPanelRect();
+            var p = GetCardsPanelRect();
             DrawBeveledPanel(p, false);
-            DrawRect(new Rectangle(p.X + 2, p.Y + 22, p.Width - 4, p.Height - 24), new Color(8, 12, 26));
-            DrawPixelText("BARALHO - TOQUE UMA CARTA", p.X + 16, p.Y + 8, 2, Se98Text);
+            DrawRect(new Rectangle(p.X + 2, p.Y + 2, p.Width - 4, p.Height - 4), new Color(8, 12, 26));
+            for (int x = p.X + 2; x < p.Right - 2; x += 2)
+                DrawRect(new Rectangle(x, p.Y + 2, 2, HY(28)),
+                         Color.Lerp(Se98TitleA, Se98TitleB, (x - p.X) / (float)p.Width));
+            DrawPixelText("CARTAS", p.X + HX(12), p.Y + HY(6), 3, Color.White);
+            DrawBeveledButton(GetCardsPanelCloseRect(), "X", true);
 
             for (int i = 0; i < _deck.Length; i++)
             {
-                var c = GetHomeDeckRect(i);
+                var c = GetHomeCardRect(i);
                 var def = _deck[i];
                 bool sel = _selectedDeckCard == i;
                 DrawBeveledPanel(c, sel);
@@ -2648,7 +2806,7 @@ namespace LumiaRoyale.Game
                          sel ? new Color(16, 32, 80) : new Color(18, 24, 42));
 
                 var tex = GetCardPortraitTexture(def);
-                var portrait = new Rectangle(c.X + 6, c.Y + 8, 40, 40);
+                var portrait = new Rectangle(c.X + HX(6), c.Y + HY(6), HX(60), HY(60));
                 if (tex != null)
                 {
                     var src = new Rectangle((PunyFrontDir * 3 + 1) * PunyCell, 0, PunyCell, PunyCell);
@@ -2660,16 +2818,17 @@ namespace LumiaRoyale.Game
                     DrawRect(portrait, Color.White * 0.4f, 2);
                 }
 
-                var cost = new Rectangle(c.Right - 30, c.Y + 6, 24, 24);
+                var cost = new Rectangle(c.Right - HX(30), c.Y + HY(4), HX(24), HX(24));
                 DrawBeveledPanel(cost, false);
                 DrawPixelText(def.Cost.ToString(), cost.Center.X - 4, cost.Center.Y - 7, 3, Se98Text);
 
                 string name = def.Name.ToUpperInvariant();
-                if (name.Length > 10) name = name.Substring(0, 10);
-                DrawPixelText(name, c.X + 52, c.Y + 16, 2, Color.White);
-                DrawPixelText(def.Kind.ToString().ToUpperInvariant(), c.X + 52, c.Y + 38, 2,
+                if (name.Length > 12) name = name.Substring(0, 12);
+                DrawPixelText(name, c.X + HX(72), c.Y + HY(10), 2, Color.White);
+                DrawPixelText(def.Kind.ToString().ToUpperInvariant(), c.X + HX(72), c.Y + HY(30), 2,
                               new Color(180, 200, 230));
-                DrawPixelText("DMG " + def.Damage, c.X + 8, c.Y + 58, 2, Se98Face);
+                DrawPixelText("DMG " + def.Damage + "  VIDA " + def.Hp, c.X + HX(6), c.Y + HY(76), 2,
+                              Se98Face);
             }
         }
 
@@ -2729,17 +2888,19 @@ namespace LumiaRoyale.Game
             }
         }
 
-        private void DrawBeveledButton(Rectangle r, string label, bool active = false)
+        private void DrawBeveledButton(Rectangle r, string label, bool active = false, int scale = 3)
         {
             DrawBeveledPanel(r, false);
+            int tx = r.Center.X - label.Length * 2 * scale;
+            int ty = r.Center.Y - (5 * scale) / 2;
             if (active)
             {
                 DrawRect(new Rectangle(r.X + 2, r.Y + 2, r.Width - 4, r.Height - 4), Se98Selected);
-                DrawPixelText(label, r.Center.X - label.Length * 6, r.Center.Y - 7, 3, Color.White);
+                DrawPixelText(label, tx, ty, scale, Color.White);
             }
             else
             {
-                DrawPixelText(label, r.Center.X - label.Length * 6, r.Center.Y - 7, 3, Se98Text);
+                DrawPixelText(label, tx, ty, scale, Se98Text);
             }
         }
 

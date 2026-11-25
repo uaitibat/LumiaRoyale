@@ -105,6 +105,8 @@
     <Content Include="Assets\Sprites\Puny\Mage-Red.png" />
     <Content Include="Assets\Sprites\Colosso.png" />
     <Content Include="Assets\Sprites\Torreta.png" />
+    <Content Include="Assets\HomeBanner.jpg" />
+    <Content Include="Assets\HomeBackground.jpg" />
   </ItemGroup>
   <ItemGroup>
     <ApplicationDefinition Include="App.xaml"><Generator>MSBuild:Compile</Generator><SubType>Designer</SubType></ApplicationDefinition>
